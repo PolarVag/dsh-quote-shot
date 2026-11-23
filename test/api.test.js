@@ -286,3 +286,170 @@ test('error response strips outPath and removes the temp PNG', async () => {
   assert.deepEqual(JSON.parse(res.body), { action: 'error', message: 'boom' })
   assert.equal(existsSync(tempPng), false)
 })
+
+test('ask outside the DSH window runs OCR and attaches candidates', async () => {
+  const { store, png } = fixture()
+  const ocrCalls = []
+  const api = createApi({
+    store,
+    capture: async () => ({
+      action: 'ask',
+      outPath: png,
+      width: 300,
+      height: 200,
+      rect: { x: 2000, y: 100, width: 300, height: 200 },
+    }),
+    ocr: async (args) => {
+      ocrCalls.push(args)
+      return ['C:\\work\\a.ts:9', 'src/b.js']
+    },
+  })
+
+  const res = await invoke(api.capture, jsonRequest(validContext))
+  const payload = JSON.parse(res.body)
+
+  assert.equal(res.status, 200)
+  assert.deepEqual(ocrCalls, [{ imagePath: png }])
+  assert.equal(payload.action, 'ask')
+  assert.deepEqual(payload.ocrCandidates, ['C:\\work\\a.ts:9', 'src/b.js'])
+  assert.equal('outPath' in payload, false)
+  assert.equal('rect' in payload, false)
+})
+
+test('ask inside the DSH window skips OCR', async () => {
+  const { store, png } = fixture()
+  let ocrCalls = 0
+  const api = createApi({
+    store,
+    capture: async () => ({
+      action: 'ask',
+      outPath: png,
+      width: 200,
+      height: 120,
+      rect: { x: 100, y: 100, width: 200, height: 120 },
+    }),
+    ocr: async () => {
+      ocrCalls += 1
+      return ['should-not-appear']
+    },
+  })
+
+  const res = await invoke(api.capture, jsonRequest(validContext))
+  const payload = JSON.parse(res.body)
+
+  assert.equal(res.status, 200)
+  assert.equal(ocrCalls, 0)
+  assert.equal('ocrCandidates' in payload, false)
+  assert.equal('outPath' in payload, false)
+  assert.equal('rect' in payload, false)
+})
+
+test('ask with an invalid or missing rect never runs OCR', async () => {
+  const { store, png } = fixture()
+  let ocrCalls = 0
+  const api = createApi({
+    store,
+    capture: async () => ({
+      action: 'ask',
+      outPath: png,
+      width: 200,
+      height: 120,
+      rect: { x: 1, y: 2, width: Number.NaN, height: 4 },
+    }),
+    ocr: async () => {
+      ocrCalls += 1
+      return ['should-not-appear']
+    },
+  })
+
+  const res = await invoke(api.capture, jsonRequest(validContext))
+
+  assert.equal(res.status, 200)
+  assert.equal(ocrCalls, 0)
+  assert.equal('ocrCandidates' in JSON.parse(res.body), false)
+})
+
+test('OCR rejection does not fail the capture', async () => {
+  const { store, png } = fixture()
+  const api = createApi({
+    store,
+    logger: { warn() {} },
+    capture: async () => ({
+      action: 'ask',
+      outPath: png,
+      width: 300,
+      height: 200,
+      rect: { x: 2000, y: 100, width: 300, height: 200 },
+    }),
+    ocr: async () => {
+      throw new Error('ocr exploded')
+    },
+  })
+
+  const res = await invoke(api.capture, jsonRequest(validContext))
+  const payload = JSON.parse(res.body)
+
+  assert.equal(res.status, 200)
+  assert.equal(payload.action, 'ask')
+  assert.match(payload.token, /^[a-f0-9]{32}$/)
+  assert.equal('ocrCandidates' in payload, false)
+  assert.equal('outPath' in payload, false)
+  assert.equal('rect' in payload, false)
+})
+
+test('OCR timeout is omitted without delaying the capture indefinitely', async () => {
+  const { store, png } = fixture()
+  const api = createApi({
+    store,
+    capture: async () => ({
+      action: 'ask',
+      outPath: png,
+      width: 300,
+      height: 200,
+      rect: { x: 2000, y: 100, width: 300, height: 200 },
+    }),
+    ocr: () => new Promise(() => {}),
+  })
+
+  const started = Date.now()
+  const res = await invoke(api.capture, jsonRequest(validContext))
+  const elapsed = Date.now() - started
+  const payload = JSON.parse(res.body)
+
+  assert.equal(res.status, 200)
+  assert.equal(payload.action, 'ask')
+  assert.equal('ocrCandidates' in payload, false)
+  assert.ok(elapsed < 2000, `capture took ${elapsed}ms`)
+})
+
+test('intersection uses physical pixels for negative, fractional-scale rects', async () => {
+  const { store, png } = fixture()
+  const context = {
+    dsh: {
+      windowRect: { x: -1000.5, y: -500.5, width: 800, height: 600 },
+      scaleFactor: 1.5,
+    },
+  }
+  let ocrCalls = 0
+  const api = createApi({
+    store,
+    capture: async () => ({
+      action: 'ask',
+      outPath: png,
+      width: 50,
+      height: 50,
+      // DSH physical rect is (-1500.75, -750.75) to (-300.75, 149.25).
+      rect: { x: -1400, y: -700, width: 50, height: 50 },
+    }),
+    ocr: async () => {
+      ocrCalls += 1
+      return ['should-not-appear']
+    },
+  })
+
+  const res = await invoke(api.capture, jsonRequest(context))
+
+  assert.equal(res.status, 200)
+  assert.equal(ocrCalls, 0)
+  assert.equal('ocrCandidates' in JSON.parse(res.body), false)
+})
