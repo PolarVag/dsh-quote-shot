@@ -44,7 +44,8 @@
 ### 1. 获取源码
 
 ```powershell
-git clone https://github.com/PolarVag/dsh-quote-shot.git C:\tools\dsh-quote-shot
+$pluginPath = Join-Path $env:USERPROFILE 'dsh-quote-shot'
+git clone https://github.com/PolarVag/dsh-quote-shot.git $pluginPath
 ```
 
 也可以下载 ZIP 后解压到任意目录。
@@ -53,7 +54,8 @@ git clone https://github.com/PolarVag/dsh-quote-shot.git C:\tools\dsh-quote-shot
 
 ```powershell
 $dshProfile = Join-Path $env:USERPROFILE '.dsh\profiles\desktop'
-pnpm add --dir $dshProfile "file:C:/tools/dsh-quote-shot"
+$pluginUrl = 'file:' + ($pluginPath -replace '\\', '/')
+pnpm add --dir $dshProfile $pluginUrl
 ```
 
 `file:` 后面必须是插件目录的绝对路径，使用正斜杠或双反斜杠。
@@ -163,7 +165,7 @@ C:\Users\<用户名>\.dsh\profiles\desktop\package.json
 ## 开发
 
 ```powershell
-cd C:\tools\dsh-quote-shot
+cd $pluginPath
 node --test test/*.test.js
 ```
 
