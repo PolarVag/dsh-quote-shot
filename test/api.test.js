@@ -52,7 +52,7 @@ const validContext = {
 
 test('health reports desktop capture capability', async () => {
   const { store } = fixture()
-  const api = createApi({ store, capture: async () => ({ action: 'cancel' }) })
+  const api = createApi({ store, capture: async () => ({ action: 'cancel' }), platform: 'win32' })
 
   const res = await invoke(api.health)
 
@@ -62,6 +62,20 @@ test('health reports desktop capture capability', async () => {
     ok: true,
     platform: 'win32',
     capture: 'powershell',
+  })
+})
+
+test('health reports unsupported capture on a non-Windows host', async () => {
+  const { store } = fixture()
+  const api = createApi({ store, capture: async () => ({ action: 'cancel' }), platform: 'linux' })
+
+  const res = await invoke(api.health)
+
+  assert.equal(res.status, 200)
+  assert.deepEqual(JSON.parse(res.body), {
+    ok: false,
+    platform: 'linux',
+    capture: 'unavailable',
   })
 })
 

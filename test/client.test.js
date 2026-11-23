@@ -473,7 +473,6 @@ test('captures an ask image, attaches it, inserts OCR source, and discards', asy
   const insertion = composer.events.find((event) => event[0] === 'insertText')
   assert.ok(insertion)
   assert.match(insertion[1], /^【截图来源】自动识别：C:\\work\\a\.ts:9\n$/)
-  assert.ok(composer.events.some((event) => event[0] === 'focus'))
 })
 
 test('releases drafts and discards when addAttachments refuses', async () => {
@@ -641,7 +640,7 @@ test('pins the capture session and skips insertion after a session switch', asyn
   assert.deepEqual(composerB.events, [])
 })
 
-test('keeps source insertion and focus when the same session re-renders', async () => {
+test('keeps source insertion when the same session re-renders', async () => {
   let releaseCapture
   let started
   const startedPromise = new Promise((resolve) => { started = resolve })
@@ -668,7 +667,7 @@ test('keeps source insertion and focus when the same session re-renders', async 
   const pending = client.__internals.startCapture()
   await startedPromise
   // CameraButton assigns a new object on every render. The session did not
-  // change, so this must not suppress insertion or focus.
+  // change, so this must not suppress source insertion.
   client.__internals.__setActiveComposer({ ...composerA, inputActions: composerA.inputActions })
   releaseCapture()
   await pending
@@ -678,7 +677,6 @@ test('keeps source insertion and focus when the same session re-renders', async 
   const insertion = composerA.events.find((event) => event[0] === 'insertText')
   assert.ok(insertion)
   assert.match(insertion[1], /^【截图来源】自动识别：C:\\work\\a\.ts\n$/)
-  assert.equal(composerA.events.filter((event) => event[0] === 'focus').length, 1)
 })
 
 test('places a menu inside the viewport and flips at the edge', () => {

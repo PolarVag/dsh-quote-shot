@@ -5,7 +5,7 @@ import { parseOcrCandidates, runOcr } from '../lib/capture.js'
 
 function fakeSpawn(handler) {
   const calls = []
-  const spawnImpl = (command, args) => {
+  const spawnImpl = (command, args, options) => {
     const child = new EventEmitter()
     child.stdout = new EventEmitter()
     child.stderr = new EventEmitter()
@@ -13,7 +13,7 @@ function fakeSpawn(handler) {
     child.kill = () => {
       child.killed = true
     }
-    calls.push({ command, args, child })
+    calls.push({ command, args, options, child })
     queueMicrotask(() => handler(child))
     return child
   }
@@ -128,6 +128,8 @@ test('runOcr parses the final JSON line and returns path candidates', async () =
   assert.deepEqual(candidates, ['C:\\work\\a.ts:5', 'src/b.js'])
   assert.equal(calls.length, 1)
   assert.equal(calls[0].command, 'powershell.exe')
+  assert.equal(calls[0].options.windowsHide, true)
+  assert.deepEqual(calls[0].options.stdio, ['ignore', 'pipe', 'pipe'])
   assert.deepEqual(calls[0].args, [
     '-NoProfile',
     '-NonInteractive',

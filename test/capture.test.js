@@ -19,7 +19,7 @@ function fixture() {
 // each test drive stdout and close deterministically.
 function makeSpawn(handler) {
   let call
-  const spawnImpl = (command, args) => {
+  const spawnImpl = (command, args, options) => {
     const child = new EventEmitter()
     child.stdout = new EventEmitter()
     child.stderr = new EventEmitter()
@@ -28,6 +28,7 @@ function makeSpawn(handler) {
     call = {
       command,
       args,
+      options,
       outPath: flagValue('-OutPath'),
       contextPath: flagValue('-ContextPath'),
       contextOnDisk: JSON.parse(readFileSync(flagValue('-ContextPath'), 'utf8')),
@@ -117,6 +118,8 @@ test('runCapture maps an ask result and removes the context file', async () => {
   const call = getCall()
 
   assert.equal(call.command, 'powershell.exe')
+  assert.equal(call.options.windowsHide, true)
+  assert.deepEqual(call.options.stdio, ['ignore', 'pipe', 'pipe'])
   assert.ok(call.args.includes('-OutPath'))
   assert.ok(call.args.includes('-ContextPath'))
   assert.deepEqual(call.contextOnDisk, context)

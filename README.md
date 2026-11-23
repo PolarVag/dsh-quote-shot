@@ -12,12 +12,12 @@
 
 ## 安装
 
-前置条件：Windows 上的 DSH Desktop、可用的 `npm`，以及本机可访问的插件目录。
+前置条件：Windows 上的 DSH Desktop、可用的 `pnpm`，以及本机可访问的插件目录。
 
 1. 安装到 DSH 的 `desktop` profile：
 
    ```powershell
-   npm install --prefix "C:\Users\Person\.dsh\profiles\desktop" --save "file:C:\Users\Person\Documents\deepseek-harness\default-workspace\dsh-quote-shot"
+   pnpm add --dir "C:\Users\Person\.dsh\profiles\desktop" --save "file:C:\Users\Person\Documents\deepseek-harness\default-workspace\dsh-quote-shot"
    ```
 
    如果插件目录不同，请把 `file:` 后的路径换成实际路径；profile 路径也按本机实际安装位置调整。
@@ -48,7 +48,7 @@
 2. 执行：
 
    ```powershell
-   npm uninstall --prefix "C:\Users\Person\.dsh\profiles\desktop" dsh-quote-shot
+   pnpm remove --dir "C:\Users\Person\.dsh\profiles\desktop" dsh-quote-shot
    ```
 
 3. 完全重启 DSH Desktop。
@@ -58,7 +58,7 @@
 
 - 截图临时文件放在 `%TEMP%\dsh-quote-shot`（通常是 `C:\Users\<用户名>\AppData\Local\Temp\dsh-quote-shot`）。
 - 插件启动时会清理过期文件；临时 PNG 的 TTL 为 **1 小时**。
-- 截图失败、取消或选择“另存为”后，临时 PNG 会被删除；选择“向DSH提问”成功后，文件由一次性 token 持有，客户端取图或放弃后删除，未被处理的文件到期后清理。
+- 截图失败、取消或选择“另存为”后，临时 PNG 会被删除；选择“向DSH提问”成功后，文件由一次性 token 持有，客户端取图后通过 discard 删除。若页面在取图前关闭或丢弃请求失败，文件会在 10 分钟一次的周期清理或 1 小时后到期删除。
 - 不读取或写入剪贴板，不上传图片或文字。截图只通过本机 DSH 页面的插件 HTTP 端点传递，不经过外部服务。
 - OCR 在本机通过 Windows WinRT OCR（PowerShell）完成，不上传识别内容。仅在截图区域与 DSH 窗口不相交且没有 DOM 来源时尝试；预算 **4 秒**，失败或超时静默跳过，不影响图片附件。
 
@@ -84,7 +84,7 @@ cd C:\Users\Person\Documents\deepseek-harness\default-workspace\dsh-quote-shot
 node --test test/*.test.js
 ```
 
-当前测试结果为 **91 个测试全部通过（91 pass / 0 fail）**。测试覆盖服务端 API、截图结果解析、OCR 候选提取、客户端引用和截图流程；真实桌面截图、OCR 语言包及多显示器行为仍需在 DSH Desktop 中手工验收。
+当前测试结果为 **92 个测试全部通过（92 pass / 0 fail）**。测试覆盖服务端 API、截图结果解析、OCR 候选提取、客户端引用和截图流程；真实桌面截图、OCR 语言包及多显示器行为仍需在 DSH Desktop 中手工验收。
 
 ## 打包内容
 

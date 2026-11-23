@@ -328,6 +328,8 @@ public static class QuoteShotDpi
                 width = [int]$r.Width
                 height = [int]$r.Height
             }
+            width = [int]$r.Width
+            height = [int]$r.Height
         }
         $script:form.Close()
     }
