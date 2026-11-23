@@ -35,6 +35,33 @@ test('keeps a drive path containing spaces as one candidate', () => {
   assert.deepEqual(parseOcrCandidates(text), ['C:\\Program Files\\App\\x.ts'])
 })
 
+test('anchors drive paths at the final extension, not dotted segments', () => {
+  for (const text of [
+    'C:\\Users\\me\\.config\\app.ts',
+    'C:\\repo\\v1.2\\src\\a.ts',
+    'C:\\Program Files\\App.v2\\src\\a.ts',
+    'C:\\a\\b.test.ts',
+  ]) {
+    assert.deepEqual(parseOcrCandidates(text), [text])
+  }
+})
+
+test('keeps x86 Program Files drive paths intact', () => {
+  const text = 'C:\\Program Files (x86)\\App\\x.ts'
+  assert.deepEqual(parseOcrCandidates(text), [text])
+})
+
+test('does not swallow prose after a space-containing drive fragment', () => {
+  assert.deepEqual(parseOcrCandidates('C:\\Users\\me and src/foo.ts'), [
+    'C:\\Users\\me',
+    'src/foo.ts',
+  ])
+})
+
+test('does not join tokens separated by spaces around a slash', () => {
+  assert.deepEqual(parseOcrCandidates('a / b.ts'), [])
+})
+
 test('extracts bare code filenames with optional line numbers', () => {
   assert.deepEqual(parseOcrCandidates('error at foo.ts:42'), ['foo.ts:42'])
   assert.deepEqual(parseOcrCandidates('see main.py'), ['main.py'])
