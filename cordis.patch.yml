@@ -1,0 +1,5 @@
+- insert:
+    - id: quote-shot
+      name: dsh-quote-shot
+      inject: []
+      config: {}

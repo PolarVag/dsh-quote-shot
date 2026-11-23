@@ -1,0 +1,19 @@
+{
+  "name": "dsh-quote-shot",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "inject": ["slots", "shortcuts", "sessions"],
+      "platform": "web"
+    }
+  }
+}
