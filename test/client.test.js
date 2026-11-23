@@ -226,6 +226,13 @@ test('resolves the root conversation service before falling back to session scop
     root,
   )
   assert.equal(
+    resolveConversation({
+      conversation: { createDrafts: 'wrong' },
+      get(name) { return name === 'conversation' ? root : undefined },
+    }, 's1'),
+    root,
+  )
+  assert.equal(
     resolveConversation({ sessions: { scope: (id) => ({ get: (name) => (id === 's1' && name === 'conversation' ? scoped : null) }) } }, 's1'),
     scoped,
   )
