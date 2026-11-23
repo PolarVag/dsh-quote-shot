@@ -1,6 +1,18 @@
 {
   "name": "dsh-quote-shot",
   "version": "0.1.0",
+  "description": "Quote selections and attach region screenshots as workspace file references in DSH Desktop.",
+  "license": "MIT",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "screenshot",
+    "quote"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
   "type": "module",
   "main": "./lib/index.js",
   "exports": {

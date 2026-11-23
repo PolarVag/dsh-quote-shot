@@ -1,95 +1,196 @@
 # dsh-quote-shot
 
-面向 Windows DSH Desktop 的“划词引用 + 区域截图”插件：把聊天、代码块或文件预览中选中的文字连同来源插入输入框，也可以截取屏幕区域，保存到当前会话工作目录并以文件引用插入输入框。所有内容都只进入输入框，**不会自动发送**。
+一个面向 **Windows DSH Desktop** 的交互增强插件：选中聊天、代码块或文件预览中的文字后，可以带来源引用到输入框；也可以截取屏幕区域，把截图保存到当前会话工作目录并以文件引用插入输入框。
+
+所有内容都只进入输入框，**不会自动发送**。
 
 ## 功能
 
-- **划词提问**：在聊天消息、代码块或文件预览中选中文字，右键选择“向DSH提问”，或按 `Ctrl+Alt+Q`。插件会把引用块插入当前输入框，并带上来源（文件路径与行号、对话轮次或代码语言）。
-- **区域截图**：按 `Ctrl+Alt+Z`，或点击输入框旁的截图按钮，拖选屏幕区域。浮层提供两个操作：
-  - **向DSH提问**：把 PNG 保存到当前会话工作目录的 `quote-shot-captures/`，再以蓝色文件引用插入输入框；如果截图不在 DSH 窗口内、且没有可用的 DOM 来源，还会尝试本机 OCR，把识别出的候选来源以“自动识别：…”附上，供用户核对和修改。文件引用本身与内容来源分开，不会把 `quote-shot-captures/` 当成内容来源。
-  - **另存为**：只把截图另存为 PNG，不插入输入框；该操作没有快捷键。
-- **引用边界**：每段引用末尾都会插入 `【引用结束】`，与用户随后输入的问题明确分开；右键菜单打开时，选中的文字仍以蓝色高亮保留。文件和截图来源使用 `@路径` 形式的蓝色引用，聊天轮次来源保持文字说明。
-- **不自动发送**：引用和截图文件引用都停留在输入框，发送动作始终由用户完成。
+### 划词引用
+
+- 在聊天消息、代码块或文件预览中选中文字，按 `Ctrl+Alt+Q`，或右键选择 **向DSH提问**。
+- 引用块会自动带上来源：
+  - 文件预览：`@相对路径（第 N–M 行）`，在 DSH 中显示为蓝色文件引用；
+  - 聊天消息：`对话第 N 轮`；
+  - 代码块：额外标注代码语言。
+- 每段引用末尾插入 `【引用结束】`，与用户随后输入的问题明确分开。
+- 打开右键菜单时，选中的文字仍以半透明蓝色高亮保留。
+
+### 区域截图
+
+- 按 `Ctrl+Alt+Z`，或点击输入框旁的截图按钮。
+- 拖选屏幕区域后，浮层提供两个操作：
+
+| 操作 | 行为 |
+| --- | --- |
+| **向DSH提问** | 把截图保存到当前会话工作目录的 `quote-shot-captures/`，以 `@quote-shot-captures/xxx.png` 文件引用插入输入框，并附 `【截图来源】` 说明。 |
+| **另存为** | 只把截图另存为 PNG，不插入输入框；该操作没有快捷键。 |
+
+- `Esc`、右键或点击浮层外部可取消截图。
+- 如果截图来自 DSH 窗口外，插件会尝试用本机 Windows OCR 识别截图中的路径，并以“自动识别：…”提示候选来源。识别失败时只插入截图文件引用，不阻塞主流程。
+
+## 环境要求
+
+- Windows 10 / 11。
+- **DSH Desktop**（Windows 桌面版）。插件在 DSH Desktop `0.2.1-rc.2` 上开发和验证，DSH 客户端接口仍可能随版本变化。
+- `pnpm`（用于安装到 DSH profile）。
+- Windows PowerShell 5.1（系统自带）；OCR 需要系统安装对应语言的 OCR 语言包。
+- Web 版 DSH 只能使用划词引用，不能使用区域截图。
 
 ## 安装
 
-前置条件：Windows 上的 DSH Desktop、可用的 `pnpm`，以及本机可访问的插件目录。
+以下命令以 PowerShell 为例。请把插件目录替换成你实际克隆/解压的位置。
 
-1. 安装到 DSH 的 `desktop` profile：
+### 1. 获取源码
 
-   ```powershell
-   pnpm add --dir "C:\Users\Person\.dsh\profiles\desktop" "file:C:\Users\Person\Documents\deepseek-harness\default-workspace\dsh-quote-shot"
-   ```
+```powershell
+git clone https://github.com/<your-name>/dsh-quote-shot.git C:\tools\dsh-quote-shot
+```
 
-   如果插件目录不同，请把 `file:` 后的路径换成实际路径；profile 路径也按本机实际安装位置调整。
+也可以下载 ZIP 后解压到任意目录。
 
-2. 编辑 `C:\Users\Person\.dsh\profiles\desktop\package.json`，把 `dsh-quote-shot` 加入 `dsh.profile.bundles`：
+### 2. 安装到 DSH 的 desktop profile
 
-   ```json
-   {
-     "dsh": {
-       "profile": {
-         "bundles": [
-           "dsh-quote-shot"
-         ]
-       }
-     }
-   }
-   ```
+```powershell
+$dshProfile = Join-Path $env:USERPROFILE '.dsh\profiles\desktop'
+pnpm add --dir $dshProfile "file:C:/tools/dsh-quote-shot"
+```
 
-   如果数组里已有其它插件，保留它们，只在末尾追加 `"dsh-quote-shot"`。
+`file:` 后面必须是插件目录的绝对路径，使用正斜杠或双反斜杠。
 
-3. **完全退出并重新启动 DSH Desktop**。仅刷新页面或重载 Web 视图不会加载主进程插件。
+### 3. 启用插件 bundle
 
-4. 启动后可用 `Ctrl+Alt+Q` 或输入框旁的截图按钮验证。
+打开：
 
-## 卸载
+```text
+C:\Users\<用户名>\.dsh\profiles\desktop\package.json
+```
 
-1. 从 `C:\Users\Person\.dsh\profiles\desktop\package.json` 的 `dsh.profile.bundles` 中删除 `"dsh-quote-shot"`。
-2. 执行：
+在 `dsh.profile.bundles` 数组中加入 `"dsh-quote-shot"`，保留已有插件：
 
-   ```powershell
-   pnpm remove --dir "C:\Users\Person\.dsh\profiles\desktop" dsh-quote-shot
-   ```
+```json
+{
+  "dsh": {
+    "profile": {
+      "bundles": [
+        "dsh-vision-plugin",
+        "dsh-quote-shot"
+      ]
+    }
+  }
+}
+```
 
-3. 完全重启 DSH Desktop。
-4. 如需清理残留截图，可手动删除 `%TEMP%\dsh-quote-shot` 目录。
+### 4. 完全重启 DSH Desktop
+
+仅刷新页面不够，需要**完全退出 DSH Desktop 后重新启动**，让主进程和客户端 bundle 一起重新加载。
+
+## 使用
+
+### 引用文字
+
+1. 在聊天、代码块或文件预览中选中文字。
+2. 按 `Ctrl+Alt+Q`，或右键选择 **向DSH提问**。
+3. 引用会插入当前输入框，末尾带 `【引用结束】`。
+4. 在引用后继续输入问题，确认后手动发送。
+
+### 截图
+
+1. 按 `Ctrl+Alt+Z`，或点击输入框旁的截图按钮。
+2. 拖选区域。
+3. 选择 **向DSH提问** 或 **另存为**。
+
+截图文件默认保存到当前会话工作目录：
+
+```text
+<session workspace>/quote-shot-captures/shot-YYYYMMDD-HHmmss.png
+```
+
+如果工作目录不可写，或者当前会话没有解析出 `cwd`，会退回临时图片附件方式。
+
+### 修改快捷键
+
+快捷键通过 DSH 的快捷键设置注册，默认值为：
+
+- 划词引用：`Ctrl+Alt+Q`
+- 区域截图：`Ctrl+Alt+Z`
+
+如果与其它命令冲突，DSH 会拒绝注册或提示冲突；请在 DSH 的快捷键设置中改绑。**另存为**有意不提供快捷键。
 
 ## 隐私与临时文件
 
-- 截图临时文件放在 `%TEMP%\dsh-quote-shot`（通常是 `C:\Users\<用户名>\AppData\Local\Temp\dsh-quote-shot`）。
-- 插件启动时会清理过期文件；临时 PNG 的 TTL 为 **1 小时**。
-- 截图失败、取消或选择“另存为”后，临时 PNG 会被删除；选择“向DSH提问”后，插件会把 PNG 复制到当前会话工作目录的 `quote-shot-captures/` 并插入文件引用，随后通过 discard 删除临时文件。工作目录里的副本是报告/对话内容的一部分，会保留到用户自行删除。若页面在请求完成前关闭或丢弃请求失败，后台每 10 分钟检查一次，删除超过 1 小时 TTL 的临时文件，因此临时目录最多可能残留约 70 分钟。
-- 不读取或写入剪贴板，不上传图片或文字。截图只通过本机 DSH 页面的插件 HTTP 端点传递，不经过外部服务。
-- OCR 在本机通过 Windows WinRT OCR（PowerShell）完成，不上传识别内容。仅在截图区域与 DSH 窗口不相交且没有 DOM 来源时尝试；预算 **4 秒**，失败或超时静默跳过，不影响截图文件引用。
+- 截图临时文件位于 `%TEMP%\dsh-quote-shot`，临时 PNG 的 TTL 为 **1 小时**。
+- 选择 **向DSH提问** 后，PNG 会复制到会话工作目录的 `quote-shot-captures/`；这是对话/报告内容的一部分，卸载插件不会自动删除。
+- 取消截图或另存为后，临时 PNG 会被删除。
+- 插件不读写剪贴板，不上传图片或文字，也不调用外部视觉服务。
+- OCR 在本机通过 Windows WinRT OCR（PowerShell）完成；仅在截图区域与 DSH 窗口不相交且没有 DOM 来源时尝试，预算 **4 秒**，失败或超时静默跳过。
 
-## 兼容性
+## 兼容性与已知限制
 
-- 目标平台是 **Windows DSH Desktop**（依赖 PowerShell 5.1 与 Windows WinRT）。
-- Web 版只支持引用提问（右键菜单与 `Ctrl+Alt+Q`）；区域截图依赖桌面端，按钮会提示“截图仅桌面端可用”。
-- 原生右键菜单无法由插件直接扩展，插件使用 DOM 菜单，并在识别到匹配选区时尽量抑制原生菜单。
-- 高 DPI、多显示器和混合缩放场景按物理像素做坐标换算，首次使用前仍建议在本机实际验收。
+- 截图依赖 DSH Desktop 的本地 Web 服务与 PowerShell，Web 版不可用。
+- 原生右键菜单无法由插件直接扩展；插件使用 DOM 菜单，并在识别到匹配选区时尽量抑制原生菜单。不同 DSH/Electron 版本下系统菜单仍可能出现。
+- 文件引用和选区高亮依赖 DSH 客户端的 DOM 结构；DSH 升级后可能需要适配。
+- 高 DPI、多显示器和混合缩放场景按物理像素换算；首次使用前建议在本机实际验收。
+- v1 尚未实现 OCR 开关设置，OCR 常开。
+- 截图文件夹由用户自行清理；插件不会自动删除工作目录中的历史截图。
 
-## 已知限制
+## 故障排查
 
-- OCR 依赖 Windows 已安装的 OCR 语言包；缺少语言包时不会产生候选，只附图片。识别结果可能受全角标点、空格或换行影响，来源会标为“自动识别”，请自行核对。
-- v1 尚未实现 OCR 开关设置，OCR 常开；如不需要，忽略或删除自动识别的来源即可。
-- 原生菜单抑制是 best-effort，不同 DSH/Electron 版本下系统菜单仍可能出现。
-- “另存为”没有快捷键，这是有意设计。
-- 截图浮层是插件自绘窗口，不是系统截图工具；多屏边界等行为请在发布前手工验收。
-- 截图副本存放在会话工作目录的 `quote-shot-captures/`；卸载插件不会自动删除该目录。
-- 工作目录不可写或会话没有解析出 `cwd` 时，会退回旧的临时图片附件方式。
+**截图按钮提示“截图仅桌面端可用”**
 
-## 测试
+- 确认是 Windows DSH Desktop，而不是浏览器 Web 版。
+- 确认已完全重启 DSH，且 `dsh.profile.bundles` 中含 `dsh-quote-shot`。
+- 检查 profile 的 `node_modules\dsh-quote-shot` 是否存在。
+
+**提示“截图附加失败（读取图片）”**
+
+- 通常是插件版本过旧或图片路由未加载。更新到最新版本并完全重启 DSH。
+
+**提示“截图附加失败（插入文件引用）”**
+
+- 检查当前会话工作目录是否可写。
+- 检查是否在截图期间切换了会话；插件会把截图固定在开始截图时的会话，不会写入另一个会话。
+
+**右键后仍出现系统菜单**
+
+- 这是 Electron 原生菜单的 best-effort 抑制，无法保证在所有版本都消失；插件自己的“向DSH提问”菜单仍可使用。
+
+**快捷键没有反应**
+
+- 在 DSH 快捷键设置中检查是否冲突或被禁用。
+- 确认 DSH 窗口处于前台；快捷键不是系统级全局热键。
+
+## 开发
 
 ```powershell
-cd C:\Users\Person\Documents\deepseek-harness\default-workspace\dsh-quote-shot
+cd C:\tools\dsh-quote-shot
 node --test test/*.test.js
 ```
 
-当前测试结果为 **101 个测试全部通过（101 pass / 0 fail）**。测试覆盖服务端 API、截图结果解析、OCR 候选提取、工作目录复制、客户端引用和截图流程；真实桌面截图、OCR 语言包及多显示器行为仍需在 DSH Desktop 中手工验收。
+当前测试：**101 个测试全部通过（101 pass / 0 fail）**。
 
-## 打包内容
+目录结构：
 
-`npm pack` 只包含运行所需文件：`lib/`、`scripts/`、`cordis.patch.yml`、`README.md` 和 `package.json`。测试目录 `test/` 与 `.superpowers/` 不会进入安装包。
+```text
+lib/
+  index.js        Host 半：Web 路由、截图存储、工作目录复制、OCR
+  client.js       Client 半：右键引用、选区高亮、快捷键、截图 UI
+  capture.js      截图结果解析、临时文件与 token 管理
+scripts/
+  capture.ps1     WinForms 区域截图浮层
+  ocr.ps1         Windows WinRT OCR
+test/             单元测试
+cordis.patch.yml  DSH 插件注册
+```
 
+打包检查：
+
+```powershell
+npm pack --dry-run --json
+```
+
+`npm pack` 只包含运行所需文件，不包含 `test/` 与 `.superpowers/`。
+
+## License
+
+MIT
