@@ -148,6 +148,30 @@ test('runCapture maps a save result and removes the context file', async () => {
   assert.equal(existsSync(call.contextPath), false)
 })
 
+test('runCapture forwards stderr chunks to onStderr only', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'quote-shot-run-'))
+  const received = []
+  const { spawnImpl } = makeSpawn((child) => {
+    child.stderr.emit('data', Buffer.from('boom line\n', 'utf8'))
+    child.stdout.emit('data', '{"action":"cancel"}\n')
+    child.emit('close', 0)
+  })
+
+  const result = await runCapture({
+    context: { dsh: { scaleFactor: 1 } },
+    powershellPath: 'powershell.exe',
+    scriptPath: 'capture.ps1',
+    tempDir: dir,
+    spawnImpl,
+    onStderr: (text) => received.push(text),
+  })
+
+  assert.deepEqual(received, ['boom line\n'])
+  assert.equal(result.action, 'cancel')
+  assert.equal('stderr' in result, false)
+  assert.equal(existsSync(result.outPath), false)
+})
+
 test('runCapture times out and removes its context file', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'quote-shot-run-'))
   let killed = false

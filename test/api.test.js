@@ -215,6 +215,28 @@ test('discard removes the token and stays idempotent', async () => {
   assert.equal(second.status, 204)
 })
 
+test('failed token registration returns 500 and removes the temp PNG', async () => {
+  const { dir, store } = fixture()
+  const tempPng = join(dir, 'temp-ask.png')
+  writeFileSync(tempPng, Buffer.from('temp'))
+  const brokenStore = {
+    register() {
+      throw new Error('register failed')
+    },
+    resolve: store.resolve,
+    discard: store.discard,
+  }
+  const api = createApi({
+    store: brokenStore,
+    capture: async () => ({ action: 'ask', outPath: tempPng, width: 10, height: 10 }),
+  })
+
+  const res = await invoke(api.capture, jsonRequest(validContext))
+
+  assert.equal(res.status, 500)
+  assert.equal(existsSync(tempPng), false)
+})
+
 test('save response strips outPath and removes the temp PNG', async () => {
   const { dir, store } = fixture()
   const tempPng = join(dir, 'temp-save.png')
