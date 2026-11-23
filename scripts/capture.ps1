@@ -44,6 +44,9 @@ public static class QuoteShotDpi
 
     [DllImport("user32.dll")]
     public static extern bool SetProcessDPIAware();
+
+    [DllImport("user32.dll")]
+    public static extern uint GetDpiForWindow(IntPtr hwnd);
 }
 '@
 
@@ -60,7 +63,7 @@ public static class QuoteShotDpi
     # Query geometry only after DPI awareness is set: VirtualScreen and
     # CopyFromScreen must speak the same physical-pixel coordinate system.
     $script:vs = [System.Windows.Forms.SystemInformation]::VirtualScreen
-    [Console]::Error.WriteLine("quote-shot: virtual-screen {0},{1} {2}x{3}" -f $script:vs.X, $script:vs.Y, $script:vs.Width, $script:vs.Height)
+    [Console]::Error.WriteLine(("quote-shot: virtual-screen {0},{1} {2}x{3}" -f $script:vs.X, $script:vs.Y, $script:vs.Width, $script:vs.Height))
 
     $script:frozen = New-Object System.Drawing.Bitmap($script:vs.Width, $script:vs.Height)
     $frozenGraphics = [System.Drawing.Graphics]::FromImage($script:frozen)
@@ -82,6 +85,27 @@ public static class QuoteShotDpi
         $scaled = [Math]::Round($value * $script:scale)
         if ($scaled -lt 1) { return 1 }
         return [int]$scaled
+    }
+
+    # Control.DeviceDpi is not trustworthy before the window handle exists (it
+    # can report 96 on a 125 %/150 % display). Ask GetDpiForWindow once the
+    # handle is live, then fall back to DeviceDpi, then to 100 %.
+    function Update-DpiScale {
+        $dpi = 0
+        try {
+            if ($script:form -and $script:form.IsHandleCreated) {
+                $dpi = [int][QuoteShotDpi]::GetDpiForWindow($script:form.Handle)
+            }
+        } catch {
+            $dpi = 0
+        }
+        if ($dpi -le 0 -and $script:form) {
+            try { $dpi = [int]$script:form.DeviceDpi } catch { $dpi = 0 }
+        }
+        if ($dpi -le 0) { $dpi = 96 }
+        $script:scale = [double]$dpi / 96.0
+        if ($script:scale -le 0) { $script:scale = 1.0 }
+        [Console]::Error.WriteLine(("quote-shot: dpi {0} scale {1}" -f $dpi, $script:scale))
     }
 
     function Save-Crop([System.Drawing.Rectangle]$rect, [string]$path) {
@@ -131,14 +155,14 @@ public static class QuoteShotDpi
         $margin = Get-ScalePx 6
 
         $font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Point)
-        $measureBitmap = New-Object System.Drawing.Bitmap(1, 1)
-        $measureGraphics = [System.Drawing.Graphics]::FromImage($measureBitmap)
+        # Measure with the form's own DPI-aware Graphics. A 96-DPI bitmap
+        # under-measures at 125 %/150 % and the labels would wrap or clip.
+        $measureGraphics = $script:form.CreateGraphics()
         try {
             $askSize = $measureGraphics.MeasureString('向DSH提问', $font)
             $saveSize = $measureGraphics.MeasureString('另存为', $font)
         } finally {
             $measureGraphics.Dispose()
-            $measureBitmap.Dispose()
             $font.Dispose()
         }
 
@@ -358,12 +382,9 @@ public static class QuoteShotDpi
     $form.BackColor = [System.Drawing.Color]::Black
     $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
 
-    try {
-        $script:scale = [double]$form.DeviceDpi / 96.0
-    } catch {
-        $script:scale = 1.0
-    }
-    if ($script:scale -le 0) { $script:scale = 1.0 }
+    # Scale is refreshed from HandleCreated/Shown below, after the form's real
+    # window handle and monitor DPI are known.
+    $script:scale = 1.0
 
     # Control.DoubleBuffered is protected; flip it through reflection so the
     # full-screen paint does not flicker while dragging.
@@ -371,6 +392,10 @@ public static class QuoteShotDpi
     if ($doubleBuffered) {
         try { $doubleBuffered.SetValue($form, $true) } catch { }
     }
+
+    $form.Add_HandleCreated({
+        try { Update-DpiScale } catch { }
+    })
 
     $form.Add_Paint({
         param($sender, $e)
@@ -488,6 +513,13 @@ public static class QuoteShotDpi
 
     $form.Add_Shown({
         try {
+            # HandleCreated can run before the window settles on its monitor;
+            # refresh the scale and re-layout any buttons already created.
+            Update-DpiScale
+            if ($script:state -eq 'actions' -and $script:rect.Width -gt 0) {
+                Update-ActionButtons
+                $script:form.Invalidate()
+            }
             $script:form.Activate()
             $script:form.Focus()
         } catch { }
