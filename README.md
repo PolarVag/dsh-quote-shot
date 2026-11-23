@@ -17,7 +17,7 @@
 1. 安装到 DSH 的 `desktop` profile：
 
    ```powershell
-   pnpm add --dir "C:\Users\Person\.dsh\profiles\desktop" --save "file:C:\Users\Person\Documents\deepseek-harness\default-workspace\dsh-quote-shot"
+   pnpm add --dir "C:\Users\Person\.dsh\profiles\desktop" "file:C:\Users\Person\Documents\deepseek-harness\default-workspace\dsh-quote-shot"
    ```
 
    如果插件目录不同，请把 `file:` 后的路径换成实际路径；profile 路径也按本机实际安装位置调整。
@@ -58,7 +58,7 @@
 
 - 截图临时文件放在 `%TEMP%\dsh-quote-shot`（通常是 `C:\Users\<用户名>\AppData\Local\Temp\dsh-quote-shot`）。
 - 插件启动时会清理过期文件；临时 PNG 的 TTL 为 **1 小时**。
-- 截图失败、取消或选择“另存为”后，临时 PNG 会被删除；选择“向DSH提问”成功后，文件由一次性 token 持有，客户端取图后通过 discard 删除。若页面在取图前关闭或丢弃请求失败，文件会在 10 分钟一次的周期清理或 1 小时后到期删除。
+- 截图失败、取消或选择“另存为”后，临时 PNG 会被删除；选择“向DSH提问”成功后，文件由一次性 token 持有，客户端取图后通过 discard 删除。若页面在取图前关闭或丢弃请求失败，后台每 10 分钟检查一次，删除超过 1 小时 TTL 的文件，因此最多可能残留约 70 分钟。
 - 不读取或写入剪贴板，不上传图片或文字。截图只通过本机 DSH 页面的插件 HTTP 端点传递，不经过外部服务。
 - OCR 在本机通过 Windows WinRT OCR（PowerShell）完成，不上传识别内容。仅在截图区域与 DSH 窗口不相交且没有 DOM 来源时尝试；预算 **4 秒**，失败或超时静默跳过，不影响图片附件。
 
