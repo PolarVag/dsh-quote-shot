@@ -3,14 +3,141 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 
-function loadClient() {
+function loadClient(overrides = {}) {
   let registration
+  const windowOverrides = overrides.window || {}
   const sandbox = {
-    window: { __ModuleLoader__: { load: (r) => { registration = r } } },
-    console,
+    ...overrides,
+    window: {
+      __ModuleLoader__: { load: (r) => { registration = r } },
+      ...windowOverrides,
+    },
+    console: overrides.console || console,
   }
   vm.runInNewContext(readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8'), sandbox)
   return registration.factory(() => { throw new Error('unexpected top-level require') })
+}
+
+function jsonResponse(value, options = {}) {
+  return {
+    ok: options.ok !== false,
+    status: options.status || 200,
+    json: async () => value,
+  }
+}
+
+function blobResponse(blob) {
+  return {
+    ok: true,
+    status: 200,
+    blob: async () => blob,
+  }
+}
+
+class FakeFile {
+  constructor(parts, name, options) {
+    this.parts = parts
+    this.name = name
+    this.type = options && options.type
+  }
+}
+
+function fakeFetch({
+  health = { ok: true },
+  capture = { action: 'cancel' },
+  image = true,
+  discard = true,
+} = {}) {
+  const calls = []
+  async function fetch(url, options = {}) {
+    calls.push({ url, options })
+    if (url === '/quote-shot/api/health') {
+      return health ? jsonResponse(health) : jsonResponse({}, { ok: false, status: 503 })
+    }
+    if (url === '/quote-shot/api/capture') return jsonResponse(capture)
+    if (url.startsWith('/quote-shot/api/image/')) {
+      if (!image) return jsonResponse({}, { ok: false, status: 404 })
+      return blobResponse({ size: 12 })
+    }
+    if (url === '/quote-shot/api/discard') {
+      return discard ? jsonResponse({}) : jsonResponse({}, { ok: false, status: 500 })
+    }
+    throw new Error('unexpected fetch: ' + url)
+  }
+  return { calls, fetch }
+}
+
+function fakeComposer(tag, { added = true, inserted = true } = {}) {
+  const events = []
+  const drafts = [{ id: 'draft-' + tag }]
+  return {
+    tag,
+    events,
+    sessionId: 'session-' + tag,
+    ctx: {
+      sessions: {
+        scope(id) {
+          events.push(['scope', id])
+          return {
+            get(name) {
+              events.push(['get', id, name])
+              return {
+                createDrafts(sessionId, files) {
+                  events.push(['createDrafts', sessionId, files[0].name])
+                  return drafts
+                },
+                releaseDraftAttachments(value) {
+                  events.push(['releaseDrafts', value])
+                },
+              }
+            },
+          }
+        },
+      },
+    },
+    inputActions: {
+      captureInsertion() {
+        events.push(['captureInsertion'])
+        return { draftRev: 1 }
+      },
+      addAttachments(ids) {
+        events.push(['addAttachments', ids])
+        return added
+      },
+      insertText(text, span) {
+        events.push(['insertText', text, span])
+        return inserted
+      },
+      focus() {
+        events.push(['focus'])
+      },
+    },
+  }
+}
+
+function fakeToastDocument() {
+  const elements = []
+  const body = {
+    appendChild(element) {
+      element.parentNode = body
+      elements.push(element)
+    },
+    removeChild(element) {
+      element.parentNode = null
+    },
+  }
+  return {
+    elements,
+    body,
+    createElement() {
+      return {
+        style: {},
+        setAttribute(name, value) { this[name] = value },
+        textContent: '',
+        parentNode: null,
+      }
+    },
+  }
 }
 
 // Values created inside the vm have a different Object/Array prototype.
@@ -164,7 +291,7 @@ test('accepts only known capture actions', () => {
   const { parseCaptureResponse } = loadClient().__internals
   assert.deepEqual(
     plain(parseCaptureResponse({ action: 'ask', token: 'a'.repeat(32), width: 10, height: 20, ocrCandidates: ['src/foo.ts'] })),
-    { action: 'ask', token: 'a'.repeat(32), width: 10, height: 20, ocrCandidates: ['src/foo.ts'] },
+    { action: 'ask', token: 'a'.repeat(32), sourceKind: 'none', width: 10, height: 20, ocrCandidates: ['src/foo.ts'] },
   )
   assert.throws(() => parseCaptureResponse({ action: 'nope' }), /unsupported capture action/)
 })
@@ -204,11 +331,12 @@ test('sanitizes optional ask fields', () => {
     plain(parseCaptureResponse({
       action: 'ask',
       token: 'B'.repeat(32),
+      sourceKind: 'file',
       width: 0,
       height: 12.5,
       ocrCandidates: ['a', '', 3, 'b', 'c', 'd', 'e', 'f'],
     })),
-    { action: 'ask', token: 'B'.repeat(32), height: 12.5, ocrCandidates: ['a', 'b', 'c', 'd', 'e'] },
+    { action: 'ask', token: 'B'.repeat(32), sourceKind: 'file', height: 12.5, ocrCandidates: ['a', 'b', 'c', 'd', 'e'] },
   )
 })
 
@@ -276,6 +404,241 @@ test('registers the capture command with desktop-only defaults', () => {
   const resolved = capture.resolve()
   assert.equal(resolved.status, 'handled')
   assert.equal(typeof resolved.run, 'function')
+})
+
+test('sanitizes source kinds and defaults unknown values to none', () => {
+  const { parseCaptureResponse } = loadClient().__internals
+  assert.equal(plain(parseCaptureResponse({ action: 'ask', token: 'c'.repeat(32), sourceKind: 'file' })).sourceKind, 'file')
+  assert.equal(plain(parseCaptureResponse({ action: 'ask', token: 'c'.repeat(32), sourceKind: 'chat' })).sourceKind, 'chat')
+  assert.equal(plain(parseCaptureResponse({ action: 'ask', token: 'c'.repeat(32) })).sourceKind, 'none')
+  assert.equal(plain(parseCaptureResponse({ action: 'ask', token: 'c'.repeat(32), sourceKind: 'other' })).sourceKind, 'none')
+})
+
+test('sanitizes and caps save paths and error messages', () => {
+  const { parseCaptureResponse } = loadClient().__internals
+  assert.deepEqual(
+    plain(parseCaptureResponse({ action: 'save', path: '  C:\\a.png  ' })),
+    { action: 'save', path: 'C:\\a.png' },
+  )
+  assert.equal(parseCaptureResponse({ action: 'save', path: 'x'.repeat(5000) }).path.length, 4096)
+  assert.deepEqual(
+    plain(parseCaptureResponse({ action: 'error', message: '  failed  ' })),
+    { action: 'error', message: 'failed' },
+  )
+  assert.throws(() => parseCaptureResponse({ action: 'error', message: '   ' }), /unsupported capture action/)
+})
+
+test('whitelists finite positive source rects and drops invalid ones', () => {
+  const { buildCaptureRequest } = loadClient().__internals
+  assert.deepEqual(
+    plain(buildCaptureRequest({
+      windowRect: { x: 1, y: 2, width: -3, height: 0 },
+      scaleFactor: 1,
+      activeFile: { path: 'a.ts', rect: { x: 10, y: 20, width: 30, height: 40, extra: 1 } },
+      chat: { turn: 1, rect: { x: 'bad', y: 0, width: 10, height: 10 } },
+    })),
+    {
+      dsh: {
+        windowRect: { x: 1, y: 2, width: 0, height: 0 },
+        scaleFactor: 1,
+        activeFile: { path: 'a.ts', rect: { x: 10, y: 20, width: 30, height: 40 } },
+        chat: { turn: 1 },
+      },
+    },
+  )
+})
+
+test('captures an ask image, attaches it, inserts OCR source, and discards', async () => {
+  const fake = fakeFetch({
+    capture: {
+      action: 'ask',
+      token: 'c'.repeat(32),
+      sourceKind: 'none',
+      ocrCandidates: ['C:\\work\\a.ts:9'],
+    },
+  })
+  const client = loadClient({ fetch: fake.fetch, File: FakeFile })
+  const composer = fakeComposer('a')
+  client.__internals.__setActiveComposer(composer)
+
+  await client.__internals.startCapture()
+
+  const urls = fake.calls.map((call) => call.url)
+  assert.ok(urls.includes('/quote-shot/api/health'))
+  assert.ok(urls.includes('/quote-shot/api/capture'))
+  assert.ok(urls.includes('/quote-shot/api/image/' + 'c'.repeat(32)))
+  assert.ok(urls.includes('/quote-shot/api/discard'))
+  assert.ok(composer.events.some((event) => event[0] === 'createDrafts' && event[1] === 'session-a'))
+  assert.ok(composer.events.some((event) => event[0] === 'addAttachments'))
+  const insertion = composer.events.find((event) => event[0] === 'insertText')
+  assert.ok(insertion)
+  assert.match(insertion[1], /^【截图来源】自动识别：C:\\work\\a\.ts:9\n$/)
+  assert.ok(composer.events.some((event) => event[0] === 'focus'))
+})
+
+test('releases drafts and discards when addAttachments refuses', async () => {
+  const fake = fakeFetch({
+    capture: { action: 'ask', token: 'd'.repeat(32), sourceKind: 'none' },
+  })
+  const client = loadClient({ fetch: fake.fetch, File: FakeFile })
+  const composer = fakeComposer('a', { added: false })
+  client.__internals.__setActiveComposer(composer)
+
+  await client.__internals.startCapture()
+
+  assert.ok(composer.events.some((event) => event[0] === 'createDrafts'))
+  assert.ok(composer.events.some((event) => event[0] === 'releaseDrafts'))
+  assert.equal(composer.events.some((event) => event[0] === 'insertText'), false)
+  assert.ok(fake.calls.some((call) => call.url === '/quote-shot/api/discard'))
+})
+
+test('discards when the image request fails and never inserts a source', async () => {
+  const fake = fakeFetch({
+    image: false,
+    capture: { action: 'ask', token: 'e'.repeat(32), sourceKind: 'file' },
+  })
+  const client = loadClient({ fetch: fake.fetch, File: FakeFile })
+  const composer = fakeComposer('a')
+  client.__internals.__setActiveComposer(composer)
+
+  await client.__internals.startCapture()
+
+  assert.equal(composer.events.some((event) => event[0] === 'addAttachments'), false)
+  assert.equal(composer.events.some((event) => event[0] === 'insertText'), false)
+  assert.ok(fake.calls.some((call) => call.url === '/quote-shot/api/discard'))
+})
+
+test('does not call capture when the desktop health check fails', async () => {
+  const fake = fakeFetch({ health: null })
+  const client = loadClient({ fetch: fake.fetch, File: FakeFile })
+  client.__internals.__setActiveComposer(fakeComposer('a'))
+
+  await client.__internals.startCapture()
+
+  assert.equal(fake.calls.some((call) => call.url === '/quote-shot/api/capture'), false)
+})
+
+test('handles cancel, save, and error responses without attaching', async () => {
+  const cases = [
+    { response: { action: 'cancel' }, expected: null },
+    { response: { action: 'save', path: 'C:\\Users\\me\\shot.png' }, expected: '已保存到 C:\\Users\\me\\shot.png' },
+    { response: { action: 'error', message: 'capture failed' }, expected: 'capture failed' },
+  ]
+  for (const entry of cases) {
+    const doc = fakeToastDocument()
+    const fake = fakeFetch({ capture: entry.response })
+    const client = loadClient({
+      fetch: fake.fetch,
+      File: FakeFile,
+      document: doc,
+      setTimeout: () => 0,
+      clearTimeout: () => {},
+    })
+    const composer = fakeComposer('a')
+    client.__internals.__setActiveComposer(composer)
+
+    await client.__internals.startCapture()
+
+    assert.equal(composer.events.some((event) => event[0] === 'addAttachments'), false)
+    assert.equal(fake.calls.some((call) => call.url.startsWith('/quote-shot/api/image/')), false)
+    if (entry.expected) {
+      assert.equal(doc.elements[doc.elements.length - 1].textContent, entry.expected)
+    }
+  }
+})
+
+test('a second trigger while capturing does not start another capture POST', async () => {
+  const calls = []
+  let releaseCapture
+  let started
+  const startedPromise = new Promise((resolve) => { started = resolve })
+  const fetch = async (url, options = {}) => {
+    calls.push({ url, options })
+    if (url === '/quote-shot/api/health') return jsonResponse({ ok: true })
+    if (url === '/quote-shot/api/capture') {
+      started()
+      return new Promise((resolve) => {
+        releaseCapture = () => resolve(jsonResponse({ action: 'cancel' }))
+      })
+    }
+    return jsonResponse({})
+  }
+  const client = loadClient({ fetch, File: FakeFile })
+  client.__internals.__setActiveComposer(fakeComposer('a'))
+
+  const first = client.__internals.startCapture()
+  await startedPromise
+  const second = client.__internals.startCapture()
+  await second
+  releaseCapture()
+  await first
+
+  assert.equal(calls.filter((call) => call.url === '/quote-shot/api/capture').length, 1)
+})
+
+test('insertion failure keeps the attachment and still discards', async () => {
+  const doc = fakeToastDocument()
+  const fake = fakeFetch({
+    capture: {
+      action: 'ask',
+      token: 'f'.repeat(32),
+      sourceKind: 'none',
+      ocrCandidates: ['C:\\work\\a.ts'],
+    },
+  })
+  const client = loadClient({
+    fetch: fake.fetch,
+    File: FakeFile,
+    document: doc,
+    setTimeout: () => 0,
+    clearTimeout: () => {},
+  })
+  const composer = fakeComposer('a', { inserted: false })
+  client.__internals.__setActiveComposer(composer)
+
+  await client.__internals.startCapture()
+
+  assert.ok(composer.events.some((event) => event[0] === 'addAttachments'))
+  assert.equal(composer.events.some((event) => event[0] === 'releaseDrafts'), false)
+  assert.ok(fake.calls.some((call) => call.url === '/quote-shot/api/discard'))
+  assert.equal(doc.elements[doc.elements.length - 1].textContent, '图片已附加，但来源未能插入')
+})
+
+test('pins the capture session and skips insertion after a session switch', async () => {
+  let releaseCapture
+  let started
+  const startedPromise = new Promise((resolve) => { started = resolve })
+  const fetch = async (url) => {
+    if (url === '/quote-shot/api/health') return jsonResponse({ ok: true })
+    if (url === '/quote-shot/api/capture') {
+      started()
+      return new Promise((resolve) => {
+        releaseCapture = () => resolve(jsonResponse({
+          action: 'ask',
+          token: 'a'.repeat(32),
+          sourceKind: 'none',
+          ocrCandidates: ['C:\\work\\a.ts'],
+        }))
+      })
+    }
+    if (url.startsWith('/quote-shot/api/image/')) return blobResponse({ size: 12 })
+    return jsonResponse({})
+  }
+  const client = loadClient({ fetch, File: FakeFile })
+  const composerA = fakeComposer('a')
+  const composerB = fakeComposer('b')
+  client.__internals.__setActiveComposer(composerA)
+
+  const pending = client.__internals.startCapture()
+  await startedPromise
+  client.__internals.__setActiveComposer(composerB)
+  releaseCapture()
+  await pending
+
+  assert.ok(composerA.events.some((event) => event[0] === 'createDrafts' && event[1] === 'session-a'))
+  assert.ok(composerA.events.some((event) => event[0] === 'addAttachments'))
+  assert.equal(composerA.events.some((event) => event[0] === 'insertText'), false)
+  assert.deepEqual(composerB.events, [])
 })
 
 test('places a menu inside the viewport and flips at the edge', () => {

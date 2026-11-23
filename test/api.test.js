@@ -422,6 +422,114 @@ test('OCR timeout is omitted without delaying the capture indefinitely', async (
   assert.ok(elapsed < 2000, `capture took ${elapsed}ms`)
 })
 
+test('ask tags file sourceKind when the crop intersects an active file rect', async () => {
+  const { store, png } = fixture()
+  let ocrCalls = 0
+  const context = {
+    dsh: {
+      windowRect: { x: 0, y: 0, width: 800, height: 600 },
+      scaleFactor: 1,
+      activeFile: { path: 'src/a.ts', rect: { x: 100, y: 100, width: 100, height: 100 } },
+      chat: { turn: 2, rect: { x: 300, y: 300, width: 100, height: 100 } },
+    },
+  }
+  const api = createApi({
+    store,
+    capture: async () => ({
+      action: 'ask',
+      outPath: png,
+      width: 20,
+      height: 20,
+      rect: { x: 120, y: 120, width: 20, height: 20 },
+    }),
+    ocr: async () => {
+      ocrCalls += 1
+      return ['should-not-appear']
+    },
+  })
+
+  const res = await invoke(api.capture, jsonRequest(context))
+  const payload = JSON.parse(res.body)
+
+  assert.equal(res.status, 200)
+  assert.equal(payload.sourceKind, 'file')
+  assert.equal(ocrCalls, 0)
+  assert.equal('rect' in payload, false)
+  assert.equal('outPath' in payload, false)
+})
+
+test('ask tags chat sourceKind and still omits source geometry', async () => {
+  const { store, png } = fixture()
+  const context = {
+    dsh: {
+      windowRect: { x: 0, y: 0, width: 800, height: 600 },
+      scaleFactor: 1,
+      activeFile: { path: 'src/a.ts', rect: { x: 100, y: 100, width: 50, height: 50 } },
+      chat: { turn: 2, rect: { x: 300, y: 300, width: 100, height: 100 } },
+    },
+  }
+  const api = createApi({
+    store,
+    capture: async () => ({
+      action: 'ask',
+      outPath: png,
+      width: 20,
+      height: 20,
+      rect: { x: 320, y: 320, width: 20, height: 20 },
+    }),
+  })
+
+  const res = await invoke(api.capture, jsonRequest(context))
+  const payload = JSON.parse(res.body)
+
+  assert.equal(payload.sourceKind, 'chat')
+  assert.equal('activeFile' in payload, false)
+  assert.equal('chat' in payload, false)
+})
+
+test('ask defaults to none when source rects are absent or invalid', async () => {
+  const { store, png } = fixture()
+  const context = {
+    dsh: {
+      windowRect: { x: 0, y: 0, width: 800, height: 600 },
+      scaleFactor: 1,
+      activeFile: { path: 'src/a.ts' },
+      chat: { turn: 2, rect: { x: 300, y: 300, width: 0, height: 100 } },
+    },
+  }
+  const api = createApi({
+    store,
+    capture: async () => ({
+      action: 'ask',
+      outPath: png,
+      width: 20,
+      height: 20,
+      rect: { x: 2000, y: 100, width: 20, height: 20 },
+    }),
+    ocr: async () => ['C:\\work\\a.ts'],
+  })
+
+  const res = await invoke(api.capture, jsonRequest(context))
+  const payload = JSON.parse(res.body)
+
+  assert.equal(payload.sourceKind, 'none')
+  assert.deepEqual(payload.ocrCandidates, ['C:\\work\\a.ts'])
+})
+
+test('ask reports sourceKind none even when the crop has no usable rect', async () => {
+  const { store, png } = fixture()
+  const api = createApi({
+    store,
+    capture: async () => ({ action: 'ask', outPath: png, width: 20, height: 20 }),
+  })
+
+  const res = await invoke(api.capture, jsonRequest(validContext))
+  const payload = JSON.parse(res.body)
+
+  assert.equal(payload.sourceKind, 'none')
+  assert.equal('ocrCandidates' in payload, false)
+})
+
 test('intersection uses physical pixels for negative, fractional-scale rects', async () => {
   const { store, png } = fixture()
   const context = {
