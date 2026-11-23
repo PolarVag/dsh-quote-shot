@@ -44,7 +44,7 @@
 ### 1. 获取源码
 
 ```powershell
-git clone https://github.com/<your-name>/dsh-quote-shot.git C:\tools\dsh-quote-shot
+git clone https://github.com/PolarVag/dsh-quote-shot.git C:\tools\dsh-quote-shot
 ```
 
 也可以下载 ZIP 后解压到任意目录。

@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "description": "Quote selections and attach region screenshots as workspace file references in DSH Desktop.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PolarVag/dsh-quote-shot.git"
+  },
+  "homepage": "https://github.com/PolarVag/dsh-quote-shot#readme",
+  "bugs": {
+    "url": "https://github.com/PolarVag/dsh-quote-shot/issues"
+  },
   "keywords": [
     "dsh",
     "deepseek-harness",
