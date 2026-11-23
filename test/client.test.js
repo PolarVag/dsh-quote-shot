@@ -641,6 +641,46 @@ test('pins the capture session and skips insertion after a session switch', asyn
   assert.deepEqual(composerB.events, [])
 })
 
+test('keeps source insertion and focus when the same session re-renders', async () => {
+  let releaseCapture
+  let started
+  const startedPromise = new Promise((resolve) => { started = resolve })
+  const fetch = async (url) => {
+    if (url === '/quote-shot/api/health') return jsonResponse({ ok: true })
+    if (url === '/quote-shot/api/capture') {
+      started()
+      return new Promise((resolve) => {
+        releaseCapture = () => resolve(jsonResponse({
+          action: 'ask',
+          token: 'b'.repeat(32),
+          sourceKind: 'none',
+          ocrCandidates: ['C:\\work\\a.ts'],
+        }))
+      })
+    }
+    if (url.startsWith('/quote-shot/api/image/')) return blobResponse({ size: 12 })
+    return jsonResponse({})
+  }
+  const client = loadClient({ fetch, File: FakeFile })
+  const composerA = fakeComposer('a')
+  client.__internals.__setActiveComposer(composerA)
+
+  const pending = client.__internals.startCapture()
+  await startedPromise
+  // CameraButton assigns a new object on every render. The session did not
+  // change, so this must not suppress insertion or focus.
+  client.__internals.__setActiveComposer({ ...composerA, inputActions: composerA.inputActions })
+  releaseCapture()
+  await pending
+
+  assert.ok(composerA.events.some((event) => event[0] === 'createDrafts' && event[1] === 'session-a'))
+  assert.ok(composerA.events.some((event) => event[0] === 'addAttachments'))
+  const insertion = composerA.events.find((event) => event[0] === 'insertText')
+  assert.ok(insertion)
+  assert.match(insertion[1], /^【截图来源】自动识别：C:\\work\\a\.ts\n$/)
+  assert.equal(composerA.events.filter((event) => event[0] === 'focus').length, 1)
+})
+
 test('places a menu inside the viewport and flips at the edge', () => {
   const { placeMenu } = loadClient().__internals
   // Spread into the host realm: the client runs in a vm context, and
