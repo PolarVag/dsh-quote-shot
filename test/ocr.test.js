@@ -46,6 +46,17 @@ test('anchors drive paths at the final extension, not dotted segments', () => {
   }
 })
 
+test('accepts punctuation and CJK text immediately after a drive path', () => {
+  for (const text of [
+    'C:\\a\\b.ts: follows',
+    'C:\\a\\b.ts：以下是',
+    'C:\\a\\b.ts然后',
+    'C:\\a\\b.ts.',
+  ]) {
+    assert.deepEqual(parseOcrCandidates(text), ['C:\\a\\b.ts'])
+  }
+})
+
 test('keeps x86 Program Files drive paths intact', () => {
   const text = 'C:\\Program Files (x86)\\App\\x.ts'
   assert.deepEqual(parseOcrCandidates(text), [text])
