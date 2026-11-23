@@ -143,8 +143,8 @@ test('runCapture maps a save result and removes the context file', async () => {
   })
   const call = getCall()
 
-  assert.deepEqual(result, { action: 'save', path: savedPath })
-  assert.equal('outPath' in result, false)
+  assert.deepEqual(result, { action: 'save', path: savedPath, outPath: call.outPath })
+  assert.equal(dirname(result.outPath), dir)
   assert.equal(existsSync(call.contextPath), false)
 })
 
@@ -167,7 +167,10 @@ test('runCapture times out and removes its context file', async () => {
     spawnImpl: () => child,
   })
 
-  assert.deepEqual(result, { action: 'error', message: 'capture timed out' })
+  assert.equal(result.action, 'error')
+  assert.equal(result.message, 'capture timed out')
+  assert.equal(dirname(result.outPath), dir)
+  assert.match(result.outPath, /\.png$/)
   assert.equal(killed, true)
   assert.deepEqual(
     readdirSync(dir).filter((name) => name.endsWith('.json')),
