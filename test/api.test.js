@@ -419,7 +419,76 @@ test('OCR timeout is omitted without delaying the capture indefinitely', async (
   assert.equal(res.status, 200)
   assert.equal(payload.action, 'ask')
   assert.equal('ocrCandidates' in payload, false)
-  assert.ok(elapsed < 2000, `capture took ${elapsed}ms`)
+  assert.ok(elapsed >= 3500, `capture returned before the 4s OCR budget: ${elapsed}ms`)
+  assert.ok(elapsed < 5000, `capture took ${elapsed}ms`)
+})
+
+test('sanitizes OCR candidates by trimming, deduping, and capping at five', async () => {
+  const { store, png } = fixture()
+  const api = createApi({
+    store,
+    capture: async () => ({
+      action: 'ask',
+      outPath: png,
+      width: 300,
+      height: 200,
+      rect: { x: 2000, y: 100, width: 300, height: 200 },
+    }),
+    ocr: async () => [
+      ' C:\\a.ts ',
+      'C:\\a.ts',
+      'src/b.js',
+      'c/d.ts',
+      'e/f.ts',
+      'g/h.ts',
+      'C:\\i.ts',
+      42,
+    ],
+  })
+
+  const res = await invoke(api.capture, jsonRequest(validContext))
+  const payload = JSON.parse(res.body)
+
+  assert.equal(res.status, 200)
+  assert.deepEqual(payload.ocrCandidates, [
+    'C:\\a.ts',
+    'src/b.js',
+    'c/d.ts',
+    'e/f.ts',
+    'g/h.ts',
+  ])
+})
+
+test('edge-touching rectangles are disjoint, so OCR runs', async () => {
+  const { store, png } = fixture()
+  const context = {
+    dsh: {
+      windowRect: { x: 0, y: 0, width: 100, height: 100 },
+      scaleFactor: 1,
+    },
+  }
+  const ocrCalls = []
+  const api = createApi({
+    store,
+    capture: async () => ({
+      action: 'ask',
+      outPath: png,
+      width: 50,
+      height: 50,
+      rect: { x: 100, y: 0, width: 50, height: 50 },
+    }),
+    ocr: async (args) => {
+      ocrCalls.push(args)
+      return ['foo.ts:42']
+    },
+  })
+
+  const res = await invoke(api.capture, jsonRequest(context))
+  const payload = JSON.parse(res.body)
+
+  assert.equal(res.status, 200)
+  assert.deepEqual(ocrCalls, [{ imagePath: png }])
+  assert.deepEqual(payload.ocrCandidates, ['foo.ts:42'])
 })
 
 test('ask tags file sourceKind when the crop intersects an active file rect', async () => {

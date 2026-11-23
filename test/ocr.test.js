@@ -25,6 +25,32 @@ test('extracts path-like candidates and deduplicates them', () => {
   assert.deepEqual(parseOcrCandidates(text), ['C:\\work\\src\\foo.ts:42', 'src/bar.ts'])
 })
 
+test('normalizes fullwidth punctuation and spacing in OCR text', () => {
+  const text = 'C ： \\work\\src\\foo.ts ： 42'
+  assert.deepEqual(parseOcrCandidates(text), ['C:\\work\\src\\foo.ts:42'])
+})
+
+test('keeps a drive path containing spaces as one candidate', () => {
+  const text = 'open C:\\Program Files\\App\\x.ts now'
+  assert.deepEqual(parseOcrCandidates(text), ['C:\\Program Files\\App\\x.ts'])
+})
+
+test('extracts bare code filenames with optional line numbers', () => {
+  assert.deepEqual(parseOcrCandidates('error at foo.ts:42'), ['foo.ts:42'])
+  assert.deepEqual(parseOcrCandidates('see main.py'), ['main.py'])
+})
+
+test('does not extract arbitrary non-code filenames', () => {
+  assert.deepEqual(parseOcrCandidates('notes.txt and README.doc'), [])
+})
+
+test('does not merge candidates across newlines', () => {
+  assert.deepEqual(parseOcrCandidates('C:\\a\\b.ts\nsrc/c.ts'), [
+    'C:\\a\\b.ts',
+    'src/c.ts',
+  ])
+})
+
 test('skips relative matches fully contained inside a drive path', () => {
   const text = 'open C:\\work\\src\\foo.ts:42 and src/bar.ts'
   assert.deepEqual(parseOcrCandidates(text), ['C:\\work\\src\\foo.ts:42', 'src/bar.ts'])
@@ -33,6 +59,13 @@ test('skips relative matches fully contained inside a drive path', () => {
 test('strips trailing punctuation and filters short fragments', () => {
   const text = 'see C:\\src\\app.ts:12), then src\\lib\\x.js). and a.b.'
   assert.deepEqual(parseOcrCandidates(text), ['C:\\src\\app.ts:12', 'src\\lib\\x.js'])
+})
+
+test('strips trailing backticks and quotes', () => {
+  assert.deepEqual(parseOcrCandidates('see `C:\\x\\y.ts` and "src/z.js"'), [
+    'C:\\x\\y.ts',
+    'src/z.js',
+  ])
 })
 
 test('returns at most five candidates in first-seen order', () => {
@@ -118,6 +151,32 @@ test('runOcr returns [] on child error or unparseable output', async () => {
     }).spawnImpl,
   })
   assert.deepEqual(unparseable, [])
+})
+
+test('runOcr ignores valid JSON when the child exits nonzero', async () => {
+  const candidates = await runOcr({
+    imagePath: 'shot.png',
+    scriptPath: 'ocr.ps1',
+    powershellPath: 'powershell.exe',
+    spawnImpl: fakeSpawn((child) => {
+      child.stdout.emit('data', `${JSON.stringify({ text: 'C:\\a\\b.ts' })}\n`)
+      child.emit('close', 1)
+    }).spawnImpl,
+  })
+  assert.deepEqual(candidates, [])
+})
+
+test('runOcr treats a null exit code as failure', async () => {
+  const candidates = await runOcr({
+    imagePath: 'shot.png',
+    scriptPath: 'ocr.ps1',
+    powershellPath: 'powershell.exe',
+    spawnImpl: fakeSpawn((child) => {
+      child.stdout.emit('data', `${JSON.stringify({ text: 'C:\\a\\b.ts' })}\n`)
+      child.emit('close', null)
+    }).spawnImpl,
+  })
+  assert.deepEqual(candidates, [])
 })
 
 test('runOcr returns [] when the result text is not a string', async () => {
