@@ -39,20 +39,24 @@
 
 ## 安装
 
-以下命令以 PowerShell 为例。请把插件目录替换成你实际克隆/解压的位置。
+以下命令以 PowerShell 为例。
 
-### 1. 获取源码
+### 方式 A：直接安装 Release 预构建包（推荐）
+
+```powershell
+$dshProfile = Join-Path $env:USERPROFILE '.dsh\profiles\desktop'
+$releaseUrl = 'https://github.com/PolarVag/dsh-quote-shot/releases/latest/download/dsh-quote-shot.tgz'
+pnpm add --dir $dshProfile $releaseUrl
+```
+
+预构建包不需要本地构建，适合只想直接使用的用户。
+
+### 方式 B：从源码安装
 
 ```powershell
 $pluginPath = Join-Path $env:USERPROFILE 'dsh-quote-shot'
 git clone https://github.com/PolarVag/dsh-quote-shot.git $pluginPath
-```
 
-也可以下载 ZIP 后解压到任意目录。
-
-### 2. 安装到 DSH 的 desktop profile
-
-```powershell
 $dshProfile = Join-Path $env:USERPROFILE '.dsh\profiles\desktop'
 $pluginUrl = 'file:' + ($pluginPath -replace '\\', '/')
 pnpm add --dir $dshProfile $pluginUrl
@@ -60,7 +64,7 @@ pnpm add --dir $dshProfile $pluginUrl
 
 `file:` 后面必须是插件目录的绝对路径，使用正斜杠或双反斜杠。
 
-### 3. 启用插件 bundle
+### 启用插件 bundle
 
 打开：
 
@@ -83,7 +87,7 @@ C:\Users\<用户名>\.dsh\profiles\desktop\package.json
 }
 ```
 
-### 4. 完全重启 DSH Desktop
+### 完全重启 DSH Desktop
 
 仅刷新页面不够，需要**完全退出 DSH Desktop 后重新启动**，让主进程和客户端 bundle 一起重新加载。
 
