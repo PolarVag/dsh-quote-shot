@@ -132,7 +132,12 @@ function fakeToastDocument() {
     createElement() {
       return {
         style: {},
+        children: [],
         setAttribute(name, value) { this[name] = value },
+        appendChild(child) {
+          child.parentNode = this
+          this.children.push(child)
+        },
         textContent: '',
         parentNode: null,
       }
@@ -153,7 +158,7 @@ test('quotes plain text with a file source', () => {
       text: 'const x = 1\nconst y = 2',
       source: { kind: 'file', path: 'src/foo.ts', startLine: 42, endLine: 43 },
     }),
-    '> 来源：src/foo.ts:42-43\n>\n> const x = 1\n> const y = 2',
+    '> 来源：src/foo.ts:42-43\n>\n> const x = 1\n> const y = 2\n\n【引用结束】',
   )
 })
 
@@ -164,7 +169,7 @@ test('quotes code with a dynamic fence and language', () => {
       text: 'const s = `a`',
       source: { kind: 'file', path: 'src/foo.ts', startLine: 42, language: 'ts' },
     }),
-    '来源：src/foo.ts:42\n\n```ts\nconst s = `a`\n```',
+    '来源：src/foo.ts:42\n\n```ts\nconst s = `a`\n```\n\n【引用结束】',
   )
 })
 
@@ -172,7 +177,7 @@ test('expands the fence past backtick runs in the selected code', () => {
   const { formatQuote } = loadClient().__internals
   assert.equal(
     formatQuote({ text: '```\ninside\n```', source: { kind: 'chat', turn: 3, language: 'md' } }),
-    '来源：对话第 3 轮 · 代码块（md）\n\n````md\n```\ninside\n```\n````',
+    '来源：对话第 3 轮 · 代码块（md）\n\n````md\n```\ninside\n```\n````\n\n【引用结束】',
   )
 })
 
@@ -180,7 +185,7 @@ test('uses chat turn labels and omits missing source lines', () => {
   const { formatSourceLabel, formatQuote } = loadClient().__internals
   assert.equal(formatSourceLabel({ kind: 'chat', turn: 3 }), '对话第 3 轮')
   assert.equal(formatSourceLabel({ kind: 'file', path: 'src/a.ts' }), 'src/a.ts')
-  assert.equal(formatQuote({ text: 'hi' }), '> hi')
+  assert.equal(formatQuote({ text: 'hi' }), '> hi\n\n【引用结束】')
 })
 
 test('labels chat code blocks with their language but keeps file labels path-based', () => {
@@ -190,21 +195,67 @@ test('labels chat code blocks with their language but keeps file labels path-bas
   assert.equal(formatSourceLabel({ kind: 'file', path: 'src/foo.ts', language: 'ts' }), 'src/foo.ts')
   assert.equal(
     formatQuote({ text: 'const x = 1', source: { kind: 'chat', turn: 2, language: 'ts' } }),
-    '来源：对话第 2 轮 · 代码块（ts）\n\n```ts\nconst x = 1\n```',
+    '来源：对话第 2 轮 · 代码块（ts）\n\n```ts\nconst x = 1\n```\n\n【引用结束】',
   )
 })
 
 test('truncates long bodies and marks them', () => {
   const { formatQuote } = loadClient().__internals
   const output = formatQuote({ text: 'abcdef', maxChars: 3 })
-  assert.equal(output, '> abc\n\n（已截断）')
+  assert.equal(output, '> abc\n\n（已截断）\n\n【引用结束】')
 })
 
 test('applies the default character cap at the boundary', () => {
   const { formatQuote } = loadClient().__internals
   const atLimit = 'a'.repeat(12000)
-  assert.equal(formatQuote({ text: atLimit }), '> ' + atLimit)
-  assert.equal(formatQuote({ text: 'a'.repeat(12001) }), '> ' + atLimit + '\n\n（已截断）')
+  assert.equal(formatQuote({ text: atLimit }), '> ' + atLimit + '\n\n【引用结束】')
+  assert.equal(
+    formatQuote({ text: 'a'.repeat(12001) }),
+    '> ' + atLimit + '\n\n（已截断）\n\n【引用结束】',
+  )
+})
+
+test('resolves the root conversation service before falling back to session scope', () => {
+  const { normalizeSessionId, resolveConversation } = loadClient().__internals
+  const root = { createDrafts() { return [] } }
+  const scoped = { createDrafts() { return [{ id: 'scoped' }] } }
+  assert.equal(normalizeSessionId({ id: 's1' }), 's1')
+  assert.equal(normalizeSessionId({ sessionId: 's2' }), 's2')
+  assert.equal(
+    resolveConversation({ conversation: root, sessions: { scope() { return { get: () => scoped } } } }, 's1'),
+    root,
+  )
+  assert.equal(
+    resolveConversation({ sessions: { scope: (id) => ({ get: (name) => (id === 's1' && name === 'conversation' ? scoped : null) }) } }, 's1'),
+    scoped,
+  )
+})
+
+test('draws a non-intercepting overlay over the selected client rects', () => {
+  const doc = fakeToastDocument()
+  const { showSelectionOverlay, clearSelectionOverlay } = loadClient({ document: doc }).__internals
+  const range = {
+    getClientRects() {
+      return [
+        { left: 10, top: 20, width: 30, height: 15 },
+        { left: 40, top: 20, width: 0, height: 15 },
+      ]
+    },
+  }
+
+  showSelectionOverlay(range)
+
+  assert.equal(doc.elements.length, 1)
+  const layer = doc.elements[0]
+  assert.equal(layer.style.position, 'fixed')
+  assert.equal(layer.style.pointerEvents, 'none')
+  assert.equal(layer.children.length, 1)
+  assert.equal(layer.children[0].style.left, '10px')
+  assert.equal(layer.children[0].style.width, '30px')
+  assert.equal(layer.children[0].style.background, 'rgba(59, 130, 246, 0.38)')
+
+  clearSelectionOverlay()
+  assert.equal(layer.parentNode, null)
 })
 
 test('builds a file source from a dsh-resource address and line range', () => {
