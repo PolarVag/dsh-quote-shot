@@ -39,7 +39,7 @@ test('expands the fence past backtick runs in the selected code', () => {
   const { formatQuote } = loadClient().__internals
   assert.equal(
     formatQuote({ text: '```\ninside\n```', source: { kind: 'chat', turn: 3, language: 'md' } }),
-    '来源：对话第 3 轮\n\n````md\n```\ninside\n```\n````',
+    '来源：对话第 3 轮 · 代码块（md）\n\n````md\n```\ninside\n```\n````',
   )
 })
 
@@ -48,6 +48,17 @@ test('uses chat turn labels and omits missing source lines', () => {
   assert.equal(formatSourceLabel({ kind: 'chat', turn: 3 }), '对话第 3 轮')
   assert.equal(formatSourceLabel({ kind: 'file', path: 'src/a.ts' }), 'src/a.ts')
   assert.equal(formatQuote({ text: 'hi' }), '> hi')
+})
+
+test('labels chat code blocks with their language but keeps file labels path-based', () => {
+  const { formatSourceLabel, formatQuote } = loadClient().__internals
+  assert.equal(formatSourceLabel({ kind: 'chat', turn: 3, language: 'ts' }), '对话第 3 轮 · 代码块（ts）')
+  assert.equal(formatSourceLabel({ kind: 'chat', anchorKey: 'a1', language: 'md' }), '当前对话 · 代码块（md）')
+  assert.equal(formatSourceLabel({ kind: 'file', path: 'src/foo.ts', language: 'ts' }), 'src/foo.ts')
+  assert.equal(
+    formatQuote({ text: 'const x = 1', source: { kind: 'chat', turn: 2, language: 'ts' } }),
+    '来源：对话第 2 轮 · 代码块（ts）\n\n```ts\nconst x = 1\n```',
+  )
 })
 
 test('truncates long bodies and marks them', () => {
@@ -83,8 +94,21 @@ test('omits absent preview fields and decodes the path', () => {
     { kind: 'file', path: 'a b/c.md' },
   )
   assert.deepEqual(
+    { ...sourceFromPreview({ address: 'dsh-resource://file/session/s1/src%2Ffoo.ts' }) },
+    { kind: 'file', path: 'src/foo.ts' },
+  )
+  // Spec 4.4: lines are a pair; a lone endpoint is omitted entirely.
+  assert.deepEqual(
     { ...sourceFromPreview({ address: 'dsh-resource://file/session/s1/src%2Ffoo.ts', startLine: 7 }) },
-    { kind: 'file', path: 'src/foo.ts', startLine: 7 },
+    { kind: 'file', path: 'src/foo.ts' },
+  )
+  assert.deepEqual(
+    { ...sourceFromPreview({ address: 'dsh-resource://file/session/s1/src%2Ffoo.ts', endLine: 9 }) },
+    { kind: 'file', path: 'src/foo.ts' },
+  )
+  assert.deepEqual(
+    { ...sourceFromPreview({ address: 'dsh-resource://file/session/s1/src%2Ffoo.ts', startLine: 7, endLine: 7 }) },
+    { kind: 'file', path: 'src/foo.ts', startLine: 7, endLine: 7 },
   )
 })
 
@@ -128,5 +152,9 @@ test('places a menu inside the viewport and flips at the edge', () => {
   assert.deepEqual(
     { ...placeMenu({ point: { x: 780, y: 590 }, menu: { width: 160, height: 80 }, viewport: { width: 800, height: 600 } }) },
     { left: 632, top: 512 },
+  )
+  assert.deepEqual(
+    { ...placeMenu({ point: { x: -40, y: -30 }, menu: { width: 160, height: 80 }, viewport: { width: 800, height: 600 } }) },
+    { left: 8, top: 8 },
   )
 })
