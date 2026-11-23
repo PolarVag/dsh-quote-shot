@@ -63,6 +63,60 @@ test('applies the default character cap at the boundary', () => {
   assert.equal(formatQuote({ text: 'a'.repeat(12001) }), '> ' + atLimit + '\n\n（已截断）')
 })
 
+test('builds a file source from a dsh-resource address and line range', () => {
+  const { sourceFromPreview } = loadClient().__internals
+  assert.deepEqual(
+    { ...sourceFromPreview({
+      address: 'dsh-resource://file/session/s1/src%2Ffoo.ts',
+      startLine: 42,
+      endLine: 43,
+      language: 'ts',
+    }) },
+    { kind: 'file', path: 'src/foo.ts', startLine: 42, endLine: 43, language: 'ts' },
+  )
+})
+
+test('omits absent preview fields and decodes the path', () => {
+  const { sourceFromPreview } = loadClient().__internals
+  assert.deepEqual(
+    { ...sourceFromPreview({ address: 'dsh-resource://file/session/s1/a%20b%2Fc.md' }) },
+    { kind: 'file', path: 'a b/c.md' },
+  )
+  assert.deepEqual(
+    { ...sourceFromPreview({ address: 'dsh-resource://file/session/s1/src%2Ffoo.ts', startLine: 7 }) },
+    { kind: 'file', path: 'src/foo.ts', startLine: 7 },
+  )
+})
+
+test('ignores invalid preview addresses', () => {
+  const { sourceFromPreview } = loadClient().__internals
+  assert.equal(sourceFromPreview({ address: 'https://example.com/src%2Ffoo.ts' }), undefined)
+  assert.equal(sourceFromPreview({ address: 'dsh-resource://file/other/s1/src%2Ffoo.ts' }), undefined)
+  assert.equal(sourceFromPreview({ address: 'dsh-resource://file/session/s1/' }), undefined)
+  assert.equal(sourceFromPreview({ address: 'dsh-resource://file/session/s1/%E0%A4%A' }), undefined)
+  assert.equal(sourceFromPreview({}), undefined)
+})
+
+test('builds a chat source and falls back when no turn exists', () => {
+  const { sourceFromChat } = loadClient().__internals
+  assert.deepEqual({ ...sourceFromChat({ turn: 3 }) }, { kind: 'chat', turn: 3 })
+  assert.deepEqual({ ...sourceFromChat({ anchorKey: 'a1' }) }, { kind: 'chat', anchorKey: 'a1' })
+  assert.equal(sourceFromChat({}), undefined)
+})
+
+test('prefers a numeric chat turn over an anchor key', () => {
+  const { sourceFromChat } = loadClient().__internals
+  assert.deepEqual(
+    { ...sourceFromChat({ turn: 4, anchorKey: 'turn-4' }) },
+    { kind: 'chat', turn: 4 },
+  )
+  assert.deepEqual(
+    { ...sourceFromChat({ turn: 'not-a-number', anchorKey: 'turn-x' }) },
+    { kind: 'chat', anchorKey: 'turn-x' },
+  )
+  assert.equal(sourceFromChat({ anchorKey: '   ' }), undefined)
+})
+
 test('places a menu inside the viewport and flips at the edge', () => {
   const { placeMenu } = loadClient().__internals
   // Spread into the host realm: the client runs in a vm context, and
