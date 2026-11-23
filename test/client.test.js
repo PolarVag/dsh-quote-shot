@@ -56,6 +56,13 @@ test('truncates long bodies and marks them', () => {
   assert.equal(output, '> abc\n\n（已截断）')
 })
 
+test('applies the default character cap at the boundary', () => {
+  const { formatQuote } = loadClient().__internals
+  const atLimit = 'a'.repeat(12000)
+  assert.equal(formatQuote({ text: atLimit }), '> ' + atLimit)
+  assert.equal(formatQuote({ text: 'a'.repeat(12001) }), '> ' + atLimit + '\n\n（已截断）')
+})
+
 test('places a menu inside the viewport and flips at the edge', () => {
   const { placeMenu } = loadClient().__internals
   // Spread into the host realm: the client runs in a vm context, and
