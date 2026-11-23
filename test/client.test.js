@@ -67,7 +67,12 @@ function fakeFetch({
   return { calls, fetch }
 }
 
-function fakeComposer(tag, { added = true, inserted = true } = {}) {
+function fakeComposer(tag, {
+  added = true,
+  inserted = true,
+  rootSessions = null,
+  rootConversation = null,
+} = {}) {
   const events = []
   const drafts = [{ id: 'draft-' + tag }]
   return {
@@ -75,6 +80,12 @@ function fakeComposer(tag, { added = true, inserted = true } = {}) {
     events,
     sessionId: 'session-' + tag,
     ctx: {
+      get(name) {
+        events.push(['getService', name])
+        if (name === 'sessions') return rootSessions
+        if (name === 'conversation') return rootConversation
+        return null
+      },
       sessions: {
         scope(id) {
           events.push(['scope', id])
@@ -158,7 +169,7 @@ test('quotes plain text with a file source', () => {
       text: 'const x = 1\nconst y = 2',
       source: { kind: 'file', path: 'src/foo.ts', startLine: 42, endLine: 43 },
     }),
-    '> 来源：src/foo.ts:42-43\n>\n> const x = 1\n> const y = 2\n\n【引用结束】',
+    '> 来源：@src/foo.ts（第 42–43 行）\n>\n> const x = 1\n> const y = 2\n\n【引用结束】',
   )
 })
 
@@ -169,7 +180,7 @@ test('quotes code with a dynamic fence and language', () => {
       text: 'const s = `a`',
       source: { kind: 'file', path: 'src/foo.ts', startLine: 42, language: 'ts' },
     }),
-    '来源：src/foo.ts:42\n\n```ts\nconst s = `a`\n```\n\n【引用结束】',
+    '来源：@src/foo.ts（第 42 行）\n\n```ts\nconst s = `a`\n```\n\n【引用结束】',
   )
 })
 
@@ -184,7 +195,7 @@ test('expands the fence past backtick runs in the selected code', () => {
 test('uses chat turn labels and omits missing source lines', () => {
   const { formatSourceLabel, formatQuote } = loadClient().__internals
   assert.equal(formatSourceLabel({ kind: 'chat', turn: 3 }), '对话第 3 轮')
-  assert.equal(formatSourceLabel({ kind: 'file', path: 'src/a.ts' }), 'src/a.ts')
+  assert.equal(formatSourceLabel({ kind: 'file', path: 'src/a.ts' }), '@src/a.ts')
   assert.equal(formatQuote({ text: 'hi' }), '> hi\n\n【引用结束】')
 })
 
@@ -192,7 +203,7 @@ test('labels chat code blocks with their language but keeps file labels path-bas
   const { formatSourceLabel, formatQuote } = loadClient().__internals
   assert.equal(formatSourceLabel({ kind: 'chat', turn: 3, language: 'ts' }), '对话第 3 轮 · 代码块（ts）')
   assert.equal(formatSourceLabel({ kind: 'chat', anchorKey: 'a1', language: 'md' }), '当前对话 · 代码块（md）')
-  assert.equal(formatSourceLabel({ kind: 'file', path: 'src/foo.ts', language: 'ts' }), 'src/foo.ts')
+  assert.equal(formatSourceLabel({ kind: 'file', path: 'src/foo.ts', language: 'ts' }), '@src/foo.ts')
   assert.equal(
     formatQuote({ text: 'const x = 1', source: { kind: 'chat', turn: 2, language: 'ts' } }),
     '来源：对话第 2 轮 · 代码块（ts）\n\n```ts\nconst x = 1\n```\n\n【引用结束】',
@@ -340,8 +351,9 @@ test('builds a bounded capture request', () => {
       scaleFactor: 1.25,
       activeFile: { path: 'src/foo.ts', startLine: 42, endLine: 58 },
       chat: { turn: 3 },
+      workspaceRoot: 'C:\\work\\demo',
     })),
-    { dsh: { windowRect: { x: 0, y: 0, width: 1440, height: 900 }, scaleFactor: 1.25, activeFile: { path: 'src/foo.ts', startLine: 42, endLine: 58 }, chat: { turn: 3 } } },
+    { dsh: { windowRect: { x: 0, y: 0, width: 1440, height: 900 }, scaleFactor: 1.25, activeFile: { path: 'src/foo.ts', startLine: 42, endLine: 58 }, chat: { turn: 3 }, workspaceRoot: 'C:\\work\\demo' } },
   )
 })
 
@@ -352,6 +364,41 @@ test('accepts only known capture actions', () => {
     { action: 'ask', token: 'a'.repeat(32), sourceKind: 'none', width: 10, height: 20, ocrCandidates: ['src/foo.ts'] },
   )
   assert.throws(() => parseCaptureResponse({ action: 'nope' }), /unsupported capture action/)
+})
+
+test('accepts only a safe workspace-relative capture path', () => {
+  const { parseCaptureResponse } = loadClient().__internals
+  const token = 'a'.repeat(32)
+  assert.deepEqual(
+    plain(parseCaptureResponse({ action: 'ask', token, relativePath: 'quote-shot-captures/shot-1.png' })),
+    { action: 'ask', token, sourceKind: 'none', relativePath: 'quote-shot-captures/shot-1.png' },
+  )
+  for (const relativePath of [
+    'quote-shot-captures/../secret.png',
+    'quote-shot-captures/a/b.png',
+    'other/shot.png',
+    '/abs/shot.png',
+    'quote-shot-captures/shot.txt',
+  ]) {
+    assert.equal('relativePath' in parseCaptureResponse({ action: 'ask', token, relativePath }), false)
+  }
+})
+
+test('formats workspace-relative blue mentions and quotes spaced paths', () => {
+  const { formatSourceLabel } = loadClient().__internals
+  assert.equal(
+    formatSourceLabel({
+      kind: 'file',
+      path: 'C:\\work\\demo\\src\\foo.ts',
+      workspaceRoot: 'C:\\work\\demo',
+      startLine: 3,
+    }),
+    '@src/foo.ts（第 3 行）',
+  )
+  assert.equal(
+    formatSourceLabel({ kind: 'file', path: 'src/a b.ts' }),
+    '@"src/a b.ts"',
+  )
 })
 
 test('names screenshots with a timestamp', () => {
@@ -530,7 +577,88 @@ test('captures an ask image, attaches it, inserts OCR source, and discards', asy
   assert.ok(composer.events.some((event) => event[0] === 'addAttachments'))
   const insertion = composer.events.find((event) => event[0] === 'insertText')
   assert.ok(insertion)
-  assert.match(insertion[1], /^【截图来源】自动识别：C:\\work\\a\.ts:9\n$/)
+  assert.match(insertion[1], /^【截图来源】自动识别：@C:\\work\\a\.ts:9\n$/)
+})
+
+test('references a workspace copy without fetching or uploading it', async () => {
+  const fake = fakeFetch({
+    capture: {
+      action: 'ask',
+      token: 'a'.repeat(32),
+      sourceKind: 'none',
+      relativePath: 'quote-shot-captures/shot-1.png',
+    },
+  })
+  const client = loadClient({ fetch: fake.fetch, File: FakeFile })
+  const composer = fakeComposer('a')
+  client.__internals.__setActiveComposer(composer)
+
+  await client.__internals.startCapture()
+
+  assert.equal(fake.calls.some((call) => call.url.startsWith('/quote-shot/api/image/')), false)
+  assert.equal(composer.events.some((event) => event[0] === 'createDrafts'), false)
+  assert.equal(composer.events.some((event) => event[0] === 'addAttachments'), false)
+  const insertion = composer.events.find((event) => event[0] === 'insertText')
+  assert.ok(insertion)
+  assert.equal(insertion[1], '@quote-shot-captures/shot-1.png\n')
+  assert.ok(fake.calls.some((call) => call.url === '/quote-shot/api/discard'))
+})
+
+test('inserts a workspace PNG as a real DSH file-reference chip', async () => {
+  const shellEvents = []
+  const fake = fakeFetch({
+    capture: {
+      action: 'ask',
+      token: 'b'.repeat(32),
+      sourceKind: 'none',
+      relativePath: 'quote-shot-captures/shot-1.png',
+      ocrCandidates: ['C:\\work\\a.ts'],
+    },
+  })
+  const client = loadClient({ fetch: fake.fetch, File: FakeFile })
+  const rootSessions = {
+    binding(id) {
+      shellEvents.push(['binding', id])
+      return { sessionId: id }
+    },
+    list: { getSnapshot: () => ({ byId: { 'session-a': { cwd: 'C:\\work' } } }) },
+  }
+  const rootConversation = {
+    createDrafts() {
+      throw new Error('draft upload must not be used for a workspace copy')
+    },
+    input: {
+      shellFor(binding) {
+        shellEvents.push(['shellFor', binding.sessionId])
+        return {
+          addFiles(references, ids) {
+            shellEvents.push(['addFiles', references, ids])
+            return true
+          },
+        }
+      },
+    },
+  }
+  const composer = fakeComposer('a', { rootSessions, rootConversation })
+  client.__internals.__setActiveComposer(composer)
+
+  await client.__internals.startCapture()
+
+  const addFiles = shellEvents.find((event) => event[0] === 'addFiles')
+  assert.ok(addFiles)
+  assert.deepEqual(plain(addFiles[1]), [{
+    source: 'reference',
+    ref: '@quote-shot-captures/shot-1.png',
+    label: 'shot-1.png',
+    appearance: 'file',
+    clipboardText: '@quote-shot-captures/shot-1.png',
+  }])
+  assert.deepEqual(plain(addFiles[2]), [])
+  assert.equal(composer.events.some((event) => event[0] === 'addAttachments'), false)
+  const insertion = composer.events.find((event) => event[0] === 'insertText')
+  assert.ok(insertion)
+  assert.equal(insertion[1], '\n【截图来源】自动识别：@C:\\work\\a.ts\n')
+  assert.ok(fake.calls.some((call) => call.url === '/quote-shot/api/discard'))
 })
 
 test('releases drafts and discards when addAttachments refuses', async () => {
@@ -734,7 +862,7 @@ test('keeps source insertion when the same session re-renders', async () => {
   assert.ok(composerA.events.some((event) => event[0] === 'addAttachments'))
   const insertion = composerA.events.find((event) => event[0] === 'insertText')
   assert.ok(insertion)
-  assert.match(insertion[1], /^【截图来源】自动识别：C:\\work\\a\.ts\n$/)
+  assert.match(insertion[1], /^【截图来源】自动识别：@C:\\work\\a\.ts\n$/)
 })
 
 test('places a menu inside the viewport and flips at the edge', () => {

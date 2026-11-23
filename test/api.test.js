@@ -1,10 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync, existsSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
-import { createApi } from '../lib/index.js'
+import { copyCaptureToWorkspace, createApi, imageTokenFromUrl } from '../lib/index.js'
 import { createCaptureStore } from '../lib/capture.js'
 
 function fakeRes() {
@@ -49,6 +49,40 @@ const validContext = {
     scaleFactor: 1.25,
   },
 }
+
+test('extracts image tokens from the registered prefix without a double slash', () => {
+  assert.equal(imageTokenFromUrl('/quote-shot/api/image/' + 'a'.repeat(32)), 'a'.repeat(32))
+  assert.equal(imageTokenFromUrl('/quote-shot/api/image/' + 'b'.repeat(32) + '?v=1'), 'b'.repeat(32))
+  assert.equal(imageTokenFromUrl('/quote-shot/api/image/'), '')
+  assert.equal(imageTokenFromUrl('/quote-shot/api/image'), '')
+  assert.equal(imageTokenFromUrl('/quote-shot/api/other/' + 'c'.repeat(32)), '')
+})
+
+test('copies an ask PNG into the session workspace and avoids overwrites', () => {
+  const sourceDir = mkdtempSync(join(tmpdir(), 'quote-shot-copy-src-'))
+  const workspace = mkdtempSync(join(tmpdir(), 'quote-shot-copy-ws-'))
+  const source = join(sourceDir, 'shot.png')
+  writeFileSync(source, Buffer.from('first'))
+
+  const first = copyCaptureToWorkspace(workspace, source)
+  const second = copyCaptureToWorkspace(workspace, source)
+
+  assert.deepEqual(first, { relativePath: 'quote-shot-captures/shot.png' })
+  assert.deepEqual(second, { relativePath: 'quote-shot-captures/shot-1.png' })
+  assert.equal(readFileSync(join(workspace, first.relativePath), 'utf8'), 'first')
+  assert.equal(readFileSync(join(workspace, second.relativePath), 'utf8'), 'first')
+})
+
+test('does not create a capture folder for an unusable workspace root', () => {
+  const sourceDir = mkdtempSync(join(tmpdir(), 'quote-shot-copy-src-'))
+  const source = join(sourceDir, 'shot.png')
+  writeFileSync(source, Buffer.from('first'))
+  const missing = join(sourceDir, 'missing')
+
+  assert.equal(copyCaptureToWorkspace(missing, source), null)
+  assert.equal(copyCaptureToWorkspace('', source), null)
+  assert.equal(existsSync(join(missing, 'quote-shot-captures')), false)
+})
 
 test('health reports desktop capture capability', async () => {
   const { store } = fixture()
