@@ -84,8 +84,9 @@ cd C:\Users\Person\Documents\deepseek-harness\default-workspace\dsh-quote-shot
 node --test test/*.test.js
 ```
 
-当前测试结果为 **90 个测试全部通过（90 pass / 0 fail）**。测试覆盖服务端 API、截图结果解析、OCR 候选提取、客户端引用和截图流程；真实桌面截图、OCR 语言包及多显示器行为仍需在 DSH Desktop 中手工验收。
+当前测试结果为 **91 个测试全部通过（91 pass / 0 fail）**。测试覆盖服务端 API、截图结果解析、OCR 候选提取、客户端引用和截图流程；真实桌面截图、OCR 语言包及多显示器行为仍需在 DSH Desktop 中手工验收。
 
 ## 打包内容
 
 `npm pack` 只包含运行所需文件：`lib/`、`scripts/`、`cordis.patch.yml`、`README.md` 和 `package.json`。测试目录 `test/` 与 `.superpowers/` 不会进入安装包。
+
