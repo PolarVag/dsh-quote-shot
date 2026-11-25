@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
-import { copyCaptureToWorkspace, createApi, imageTokenFromUrl } from '../lib/index.js'
+import { apply, copyCaptureToWorkspace, createApi, createGuardedHandler, imageTokenFromUrl } from '../lib/index.js'
 import { createCaptureStore } from '../lib/capture.js'
 
 function fakeRes() {
@@ -677,4 +677,101 @@ test('intersection uses physical pixels for negative, fractional-scale rects', a
   assert.equal(res.status, 200)
   assert.equal(ocrCalls, 0)
   assert.equal('ocrCandidates' in JSON.parse(res.body), false)
+})
+
+test('guarded route rejects an unauthenticated request before dispatch', async () => {
+  let calls = 0
+  const handler = createGuardedHandler(
+    () => ({ requestRejection: () => 401 }),
+    async () => { calls += 1 },
+  )
+
+  const res = await invoke(handler)
+
+  assert.equal(res.status, 401)
+  assert.equal(res.body, 'unauthorized')
+  assert.equal(res.headers['Cache-Control'], 'no-store')
+  assert.equal(calls, 0)
+})
+
+test('guarded route preserves a 403 source rejection', async () => {
+  let calls = 0
+  const handler = createGuardedHandler(
+    () => ({ requestRejection: () => 403 }),
+    async () => { calls += 1 },
+  )
+
+  const res = await invoke(handler)
+
+  assert.equal(res.status, 403)
+  assert.equal(res.body, 'forbidden')
+  assert.equal(calls, 0)
+})
+
+test('guarded route fails closed when the fence throws', async () => {
+  let calls = 0
+  const handler = createGuardedHandler(
+    () => ({ requestRejection: () => { throw new Error('broken') } }),
+    async () => { calls += 1 },
+  )
+
+  const res = await invoke(handler)
+
+  assert.equal(res.status, 503)
+  assert.equal(res.body, 'authentication unavailable')
+  assert.equal(calls, 0)
+})
+
+test('guarded route lets the 0.2.3 webserver auth policy handle an absent fence', async () => {
+  let calls = 0
+  const handler = createGuardedHandler(
+    () => ({ fetch: {} }),
+    async (_req, res) => {
+      calls += 1
+      res.writeHead(200)
+      res.end('ok')
+    },
+  )
+
+  const res = await invoke(handler)
+
+  assert.equal(res.status, 200)
+  assert.equal(res.body, 'ok')
+  assert.equal(calls, 1)
+})
+
+test('apply registers authenticated routes protected by the connection fence', async () => {
+  const routes = []
+  const scope = {
+    get(name) {
+      return name === 'connection' ? { requestRejection: () => 401 } : undefined
+    },
+    effect(fn) {
+      fn()
+    },
+    webServer: {
+      register(route) {
+        routes.push(route)
+        return () => {}
+      },
+    },
+  }
+  apply({
+    inject(_deps, callback) {
+      callback(scope)
+    },
+    logger: { warn() {} },
+  })
+
+  assert.deepEqual(routes.map(route => route.path), [
+    '/quote-shot/api/capture',
+    '/quote-shot/api/image',
+    '/quote-shot/api/discard',
+    '/quote-shot/api/health',
+  ])
+  assert.equal(routes.every(route => route.auth === 'required'), true)
+
+  const res = await invoke(routes[0].handler)
+  assert.equal(res.status, 401)
+  assert.equal(res.body, 'unauthorized')
 })

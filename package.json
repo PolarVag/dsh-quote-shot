@@ -1,6 +1,6 @@
 {
   "name": "dsh-quote-shot",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Quote selections and attach region screenshots as workspace file references in DSH Desktop.",
   "license": "MIT",
   "repository": {

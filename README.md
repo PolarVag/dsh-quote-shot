@@ -143,6 +143,7 @@ C:\Users\<用户名>\.dsh\profiles\desktop\package.json
 - 高 DPI、多显示器和混合缩放场景按物理像素换算；首次使用前建议在本机实际验收。
 - v1 尚未实现 OCR 开关设置，OCR 常开。
 - 截图文件夹由用户自行清理；插件不会自动删除工作目录中的历史截图。
+- HTTP 路由注册为 `auth: required`，并在 DSH 0.2.1/0.2.2 宿主上通过 `connection.requestRejection` 执行 Host/Origin 与认证检查；未通过时返回 401/403。DSH 0.2.3 及以上的 Web 服务会再执行自身的鉴权策略。
 
 ## 故障排查
 
@@ -177,7 +178,7 @@ cd $pluginPath
 node --test test/*.test.js
 ```
 
-当前测试：**101 个测试全部通过（101 pass / 0 fail）**。
+当前测试：**106 个测试全部通过（106 pass / 0 fail）**。
 
 目录结构：
 
