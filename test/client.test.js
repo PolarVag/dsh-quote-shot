@@ -913,6 +913,7 @@ class FakeTextNode {
     this.parent = null
   }
   getTextContent() { return this.text }
+  getType() { return 'text' }
   getKey() { return this.key }
   getStyle() { return this.style }
   setStyle(value) { this.style = value }
@@ -936,6 +937,32 @@ class FakeTextNode {
   selectStart() {}
   selectEnd() {}
 }
+
+test('creates ASCII-only placeholder tokens', () => {
+  const { makeQuotePlaceholder } = loadClient().__internals
+  const token = makeQuotePlaceholder()
+  assert.match(token, /^QUOTE_SHOT_[A-Z0-9]+_[A-Z0-9]+$/)
+  assert.equal(/[\uE000-\uF8FF]/.test(token), false)
+})
+
+test('finds the text node, not an ancestor that repeats the placeholder', () => {
+  const { replacePlaceholderWithQuote } = loadClient().__internals
+  const token = 'QUOTE_SHOT_TEST_TOKEN'
+  const node = new FakeTextNode('before ' + token + ' after')
+  const parent = { children: [node] }
+  node.parent = parent
+  const root = {
+    getTextContent: () => 'before ' + token + ' after',
+    getType: () => 'root',
+  }
+  const editor = {
+    getEditorState: () => ({ _nodeMap: new Map([['root', root], [node.key, node]]) }),
+    update: (fn) => fn(),
+  }
+  const key = replacePlaceholderWithQuote(editor, token, '> quote', false)
+  assert.ok(key)
+  assert.deepEqual(parent.children.map((child) => child.text), ['before ', '> quote\n', ' after'])
+})
 
 test('replaces a placeholder with one styled text node and keeps surrounding text', () => {
   const { replacePlaceholderWithQuote } = loadClient().__internals

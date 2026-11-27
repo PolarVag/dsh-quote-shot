@@ -119,7 +119,7 @@ cd $pluginPath
 node --test test/*.test.js
 ```
 
-当前测试：**110 个测试全部通过（110 pass / 0 fail）**。
+当前测试：**112 个测试全部通过（112 pass / 0 fail）**。
 
 目录结构：
 
