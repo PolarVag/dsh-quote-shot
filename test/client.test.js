@@ -978,6 +978,7 @@ test('replaces a placeholder with one styled text node and keeps surrounding tex
   assert.deepEqual(parent.children.map((child) => child.text), ['before ', '> quote\n\n【引用结束】\n', ' after'])
   assert.match(parent.children[1].style, /color:#2563eb/)
   assert.match(parent.children[1].style, /max-height:9\.5em/)
+  assert.match(parent.children[1].style, /display:none/)
 })
 
 test('leaves a normal sentinel after a quote at the end of the draft', () => {
