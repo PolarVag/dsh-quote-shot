@@ -980,6 +980,23 @@ test('replaces a placeholder with one styled text node and keeps surrounding tex
   assert.match(parent.children[1].style, /max-height:9\.5em/)
 })
 
+test('leaves a normal sentinel after a quote at the end of the draft', () => {
+  const { replacePlaceholderWithQuote } = loadClient().__internals
+  const token = 'QUOTE_SHOT_END'
+  const node = new FakeTextNode(token)
+  const parent = { children: [node] }
+  node.parent = parent
+  const editor = {
+    getEditorState: () => ({ _nodeMap: new Map([[node.key, node]]) }),
+    update: (fn) => fn(),
+  }
+  const key = replacePlaceholderWithQuote(editor, token, '> quote', false)
+  assert.ok(key)
+  assert.deepEqual(parent.children.map((child) => child.text), ['> quote\n', '\u200B'])
+  assert.equal(parent.children[1].style, '')
+  assert.equal(parent.children[1].format, 0)
+})
+
 test('inserts a long quote as a collapsed blue composer node', () => {
   const client = loadClient()
   const node = new FakeTextNode('')
@@ -1005,7 +1022,8 @@ test('inserts a long quote as a collapsed blue composer node', () => {
     },
     inputActions: {
       captureInsertion: () => ({ draftRev: 1 }),
-      insertText(text) {
+      insertText(text, span) {
+        composer.insertedSpan = span
         node.text = text
         return true
       },
@@ -1016,10 +1034,17 @@ test('inserts a long quote as a collapsed blue composer node', () => {
     text: Array.from({ length: 10 }, (_, index) => 'line ' + index).join('\n'),
   })
   assert.equal(inserted, true)
+  assert.equal(composer.insertedSpan.start, 0)
+  assert.equal(composer.insertedSpan.end, 0)
+  assert.equal(composer.insertedSpan.draftRev, 1)
   const quoteNode = parent.children[0]
   assert.match(quoteNode.text, /【引用结束】\n$/)
   assert.match(quoteNode.style, /color:#2563eb/)
   assert.match(quoteNode.style, /max-height:9\.5em/)
+  assert.match(quoteNode.style, /display:block/)
+  assert.equal(parent.children.length, 2)
+  assert.equal(parent.children[1].text, '\u200B')
+  assert.equal(parent.children[1].style, '')
 })
 
 
