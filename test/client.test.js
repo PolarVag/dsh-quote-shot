@@ -882,3 +882,117 @@ test('places a menu inside the viewport and flips at the edge', () => {
     { left: 8, top: 8 },
   )
 })
+
+test('collapses only long quotes', () => {
+  const { shouldCollapseQuote } = loadClient().__internals
+  assert.equal(shouldCollapseQuote('a\nb\nc'), false)
+  assert.equal(shouldCollapseQuote('a\nb\nc\nd\ne\nf\ng\nh'), false)
+  assert.equal(shouldCollapseQuote('a'.repeat(640)), false)
+  assert.equal(shouldCollapseQuote('a'.repeat(641)), true)
+  assert.equal(shouldCollapseQuote('a\nb\nc\nd\ne\nf\ng\nh\ni'), true)
+})
+
+test('quote text styles are blue and only collapsed quotes are clipped', () => {
+  const { quoteTextStyle } = loadClient().__internals
+  const collapsed = quoteTextStyle(true)
+  const expanded = quoteTextStyle(false)
+  assert.match(collapsed, /color:#2563eb/)
+  assert.match(collapsed, /max-height:9\.5em/)
+  assert.match(collapsed, /overflow:hidden/)
+  assert.match(expanded, /color:#2563eb/)
+  assert.doesNotMatch(expanded, /max-height/)
+  assert.doesNotMatch(expanded, /overflow:hidden/)
+})
+
+class FakeTextNode {
+  constructor(text) {
+    this.text = text
+    this.style = ''
+    this.format = 0
+    this.key = 'k' + Math.random().toString(36).slice(2)
+    this.parent = null
+  }
+  getTextContent() { return this.text }
+  getKey() { return this.key }
+  getStyle() { return this.style }
+  setStyle(value) { this.style = value }
+  getFormat() { return this.format }
+  setFormat(value) { this.format = value }
+  insertBefore(node) {
+    const index = this.parent.children.indexOf(this)
+    this.parent.children.splice(index, 0, node)
+    node.parent = this.parent
+  }
+  insertAfter(node) {
+    const index = this.parent.children.indexOf(this)
+    this.parent.children.splice(index + 1, 0, node)
+    node.parent = this.parent
+  }
+  replace(node) {
+    const index = this.parent.children.indexOf(this)
+    this.parent.children.splice(index, 1, node)
+    node.parent = this.parent
+  }
+  selectStart() {}
+  selectEnd() {}
+}
+
+test('replaces a placeholder with one styled text node and keeps surrounding text', () => {
+  const { replacePlaceholderWithQuote } = loadClient().__internals
+  const node = new FakeTextNode('before \uE000placeholder\uE001 after')
+  const parent = { children: [node] }
+  node.parent = parent
+  const editor = {
+    getEditorState: () => ({ _nodeMap: new Map([[node.key, node]]) }),
+    update: (fn) => fn(),
+  }
+  const key = replacePlaceholderWithQuote(editor, '\uE000placeholder\uE001', '> quote\n\n【引用结束】', true)
+  assert.ok(key)
+  assert.deepEqual(parent.children.map((child) => child.text), ['before ', '> quote\n\n【引用结束】\n', ' after'])
+  assert.match(parent.children[1].style, /color:#2563eb/)
+  assert.match(parent.children[1].style, /max-height:9\.5em/)
+})
+
+test('inserts a long quote as a collapsed blue composer node', () => {
+  const client = loadClient()
+  const node = new FakeTextNode('')
+  const parent = { children: [node] }
+  node.parent = parent
+  const editor = {
+    getEditorState: () => ({ _nodeMap: new Map([[node.key, node]]) }),
+    update: (fn) => fn(),
+  }
+  const composer = {
+    sessionId: 'session-a',
+    ctx: {
+      get(name) {
+        if (name === 'sessions') return { binding: () => ({}) }
+        if (name === 'conversation') {
+          return {
+            createDrafts() {},
+            input: { shellFor: () => ({ editor, setDraft() {} }) },
+          }
+        }
+        return null
+      },
+    },
+    inputActions: {
+      captureInsertion: () => ({ draftRev: 1 }),
+      insertText(text) {
+        node.text = text
+        return true
+      },
+    },
+  }
+  client.__internals.__setActiveComposer(composer)
+  const inserted = client.__internals.insertSnapshot({
+    text: Array.from({ length: 10 }, (_, index) => 'line ' + index).join('\n'),
+  })
+  assert.equal(inserted, true)
+  const quoteNode = parent.children[0]
+  assert.match(quoteNode.text, /【引用结束】\n$/)
+  assert.match(quoteNode.style, /color:#2563eb/)
+  assert.match(quoteNode.style, /max-height:9\.5em/)
+})
+
+
