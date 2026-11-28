@@ -865,6 +865,17 @@ test('keeps source insertion when the same session re-renders', async () => {
   assert.match(insertion[1], /^【截图来源】自动识别：@C:\\work\\a\.ts\n$/)
 })
 
+test('copies the captured selection text to the clipboard', async () => {
+  let copied = ''
+  const { copySnapshotText } = loadClient({
+    navigator: { clipboard: { writeText: async (text) => { copied = text } } },
+  }).__internals
+  assert.equal(copySnapshotText({ text: 'selected text' }), true)
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(copied, 'selected text')
+  assert.equal(copySnapshotText({ text: '' }), false)
+})
+
 test('places a menu inside the viewport and flips at the edge', () => {
   const { placeMenu } = loadClient().__internals
   // Spread into the host realm: the client runs in a vm context, and
