@@ -25,11 +25,11 @@
 
 ### 从 Release 安装
 
-当前公开 Release 为 `v0.1.1`。新版本发布后可替换 `$releaseVersion`。
+当前公开 Release 为 `v0.2.1`。新版本发布后可替换 `$releaseVersion`。
 
 ```powershell
 $dshProfile = Join-Path $env:USERPROFILE '.dsh\profiles\desktop'
-$releaseVersion = 'v0.1.1'
+$releaseVersion = 'v0.2.1'
 $releaseUrl = "https://github.com/PolarVag/dsh-quote-shot/releases/download/$releaseVersion/dsh-quote-shot.tgz"
 pnpm add --dir $dshProfile $releaseUrl
 ```
