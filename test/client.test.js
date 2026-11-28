@@ -884,6 +884,20 @@ test('retires a quote panel when sending starts or the hidden quote disappears',
   assert.equal(quotePanelShouldRetire('plain', false), true)
 })
 
+test('retires a quote on the commit-draft send effect', () => {
+  const { isCommitDraftEffect, installQuoteSubmitHook } = loadClient().__internals
+  assert.equal(isCommitDraftEffect({ type: 'commit-draft' }), true)
+  assert.equal(isCommitDraftEffect({ type: 'notice' }), false)
+  const seen = []
+  const shell = { execute(effect) { seen.push(effect.type) } }
+  assert.equal(installQuoteSubmitHook(shell), true)
+  shell.execute({ type: 'commit-draft' })
+  shell.execute({ type: 'notice' })
+  assert.deepEqual(seen, ['commit-draft', 'notice'])
+  assert.equal(shell.__quoteShotSubmitHook, true)
+  assert.equal(installQuoteSubmitHook(shell), false)
+})
+
 test('places a menu inside the viewport and flips at the edge', () => {
   const { placeMenu } = loadClient().__internals
   // Spread into the host realm: the client runs in a vm context, and
