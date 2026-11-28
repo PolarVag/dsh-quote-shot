@@ -876,6 +876,14 @@ test('copies the captured selection text to the clipboard', async () => {
   assert.equal(copySnapshotText({ text: '' }), false)
 })
 
+test('retires a quote panel when sending starts or the hidden quote disappears', () => {
+  const { quotePanelShouldRetire } = loadClient().__internals
+  assert.equal(quotePanelShouldRetire('plain', true), false)
+  assert.equal(quotePanelShouldRetire('submitting', true), true)
+  assert.equal(quotePanelShouldRetire('adjudicating', true), true)
+  assert.equal(quotePanelShouldRetire('plain', false), true)
+})
+
 test('places a menu inside the viewport and flips at the edge', () => {
   const { placeMenu } = loadClient().__internals
   // Spread into the host realm: the client runs in a vm context, and
